@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: hub
-          image: registry.local.cloud:5000/canggu/hub:0.1.15
+          image: registry.local.cloud:5000/canggu/hub:0.1.16
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8000 }]
           env:

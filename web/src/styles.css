@@ -45,6 +45,22 @@ button.primary { background: var(--accent); color: #06121f; border-color: var(--
 .freeze.on { color: #9fd3ff; }
 .stat { color: var(--muted); font-size: 13px; }
 
+.overview { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 16px; }
+.tile {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 18px; min-width: 96px; text-align: center;
+}
+.tile .tile-v { font-size: 26px; font-weight: 700; }
+.tile .tile-l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile .tile-v.crit { color: var(--crit); }
+.tile .tile-v.warn { color: var(--warn); }
+.tile.score.sok { border-color: var(--ok); }
+.tile.score.swarn { border-color: var(--warn); }
+.tile.score.scrit { border-color: var(--crit); }
+.tile.score.sok .tile-v { color: var(--ok); }
+.tile.score.swarn .tile-v { color: var(--warn); }
+.tile.score.scrit .tile-v { color: var(--crit); }
+
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .panel {
   background: var(--panel); border: 1px solid var(--border);

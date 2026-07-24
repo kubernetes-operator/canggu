@@ -25,6 +25,7 @@ export default function App() {
   const [routes, setRoutes] = useState<RouteEdge[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [commands, setCommands] = useState<Command[]>([]);
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.summary>> | null>(null);
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [err, setErr] = useState<string>("");
   const [edit, setEdit] = useState<EditState | null>(null);
@@ -78,6 +79,7 @@ export default function App() {
       setRoutes(rt);
       setIssues(i);
       setCommands(cmds);
+      api.summary(selected).then(setSummary).catch(() => setSummary(null));
     } catch (e) {
       setErr(String(e));
     }
@@ -237,6 +239,22 @@ export default function App() {
               </div>
             );
           })()}
+        </section>
+      )}
+
+      {summary && (
+        <section className="overview">
+          <div className={`tile score s${summary.health_score >= 90 ? "ok" : summary.health_score >= 70 ? "warn" : "crit"}`}>
+            <div className="tile-v">{summary.health_score}</div>
+            <div className="tile-l">헬스 스코어</div>
+          </div>
+          <div className="tile"><div className="tile-v">{summary.issues_total}</div><div className="tile-l">이슈</div></div>
+          <div className="tile"><div className="tile-v crit">{summary.issues_by_severity.critical ?? 0}</div><div className="tile-l">critical</div></div>
+          <div className="tile"><div className="tile-v warn">{summary.issues_by_severity.warn ?? 0}</div><div className="tile-l">warn</div></div>
+          <div className="tile"><div className="tile-v">{summary.restarting_pods}</div><div className="tile-l">재기동 Pod</div></div>
+          <div className="tile"><div className="tile-v">{summary.unhealthy_services}</div><div className="tile-l">비정상 SVC</div></div>
+          <div className="tile"><div className="tile-v">{summary.unbound_pvcs}</div><div className="tile-l">미바인딩 PVC</div></div>
+          <div className="tile"><div className="tile-v">{summary.workloads_single_node}</div><div className="tile-l">노드 미분산</div></div>
         </section>
       )}
 

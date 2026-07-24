@@ -200,6 +200,13 @@ export const api = {
   issues: (c: string, ns: string) =>
     get(`api/clusters/${c}/issues?namespace=${encodeURIComponent(ns)}`) as Promise<Issue[]>,
   commands: (c: string) => get(`api/commands?cluster_id=${c}`) as Promise<Command[]>,
+  summary: (c: string) => get(`api/clusters/${c}/summary`) as Promise<{
+    health_score: number; scope_namespace: string | null; issues_total: number;
+    issues_by_severity: Record<string, number>; issues_by_rule: Record<string, number>;
+    totals: Record<string, number>;
+    restarting_pods: number; unhealthy_services: number; unbound_pvcs: number;
+    workloads_single_node: number;
+  }>,
   namespaceModes: (c: string) =>
     get(`api/clusters/${c}/namespace-modes`) as Promise<Record<string, string>>,
   setClusterMode: (c: string, mode: string) => post(`api/clusters/${c}/mode`, { mode }),
