@@ -22,9 +22,19 @@ kubectl -n canggu-system create secret generic canggu-secrets \
 
 ## 3) 배포
 
+### (A) 직접 배포
 ```bash
 kubectl apply -k deploy/k8s      # = make deploy
 ```
+
+### (B) ArgoCD (GitOps, 권장)
+```bash
+kubectl apply -f deploy/argocd/application.yaml
+```
+- ArgoCD 가 `deploy/k8s`(kustomize)를 추적하여 자동 동기화(prune+selfHeal).
+- **버전 업**: 이미지 빌드/푸시 후 `deploy/k8s/kustomization.yaml` 의 `images.newTag` 수정 → 커밋/푸시 → ArgoCD 가 배포. (직접 `kubectl`/tag 수정은 selfHeal 로 되돌려짐.)
+- 시크릿 `canggu-secrets` 는 git 밖에서 1회 부트스트랩(위 2단계). ArgoCD 는 시크릿을 관리하지 않음.
+- Application 의 `targetRevision` 은 현재 `canggu-platform`; main 머지 후 `main` 으로 변경 권장.
 
 ## 4) 확인
 

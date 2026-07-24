@@ -29,6 +29,7 @@ export default function App() {
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [err, setErr] = useState<string>("");
   const [edit, setEdit] = useState<EditState | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
 
   const cluster = clusters.find((c) => c.id === selected);
   const isAdmin = me?.role === "admin";
@@ -184,6 +185,7 @@ export default function App() {
           👤 {me.username} · {me.role}
           {me.role !== "admin" && " (읽기전용)"}
         </span>
+        <button onClick={() => setPwOpen(true)}>비밀번호 변경</button>
         <button onClick={() => { clearToken(); setMe(null); }}>로그아웃</button>
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>
           {clusters.length === 0 && <option value="">(클러스터 없음)</option>}
@@ -457,6 +459,8 @@ export default function App() {
         <UsersPanel isAdmin={!!isAdmin} clusterId={selected} />
       </div>
 
+      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+
       {edit && (
         <div className="modal-backdrop" onClick={() => setEdit(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -487,6 +491,40 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [oldp, setOldp] = useState("");
+  const [newp, setNewp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function submit() {
+    setBusy(true); setErr("");
+    try {
+      await api.changePassword(oldp, newp);
+      alert("비밀번호가 변경되었습니다.");
+      onClose();
+    } catch (e) { setErr(String(e).includes("403") ? "현재 비밀번호가 올바르지 않습니다" : String(e)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>비밀번호 변경</h3>
+        <div className="edit-grid" style={{ gridTemplateColumns: "1fr" }}>
+          <label>현재 비밀번호
+            <input type="password" value={oldp} onChange={(e) => setOldp(e.target.value)} autoFocus /></label>
+          <label>새 비밀번호 (6자 이상)
+            <input type="password" value={newp} onChange={(e) => setNewp(e.target.value)} /></label>
+        </div>
+        {err && <div className="err">{err}</div>}
+        <div className="edit-actions">
+          <button onClick={onClose}>취소</button>
+          <button className="primary" disabled={busy || !oldp || !newp} onClick={submit}>변경</button>
+        </div>
+      </div>
     </div>
   );
 }

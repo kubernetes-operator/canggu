@@ -34,6 +34,29 @@ async def login(body: LoginBody) -> dict:
     }
 
 
+class ChangePasswordBody(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordBody, principal: auth.Principal = Depends(auth.require_user)
+) -> dict:
+    """로그인 사용자 본인 비밀번호 변경(현재 비밀번호 확인 후)."""
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "새 비밀번호는 6자 이상이어야 합니다")
+    user = await run_in_threadpool(crud.get_user, principal.username)
+    if user is None or not auth.verify_password(body.old_password, user.salt, user.pw_hash):
+        raise HTTPException(403, "현재 비밀번호가 올바르지 않습니다")
+    salt = auth.make_salt()
+    await run_in_threadpool(
+        crud.update_user, principal.username,
+        pw_hash=auth.hash_password(body.new_password, salt), salt=salt,
+    )
+    return {"ok": True}
+
+
 @router.get("/me")
 async def me(principal: auth.Principal = Depends(auth.require_user)) -> dict:
     return {

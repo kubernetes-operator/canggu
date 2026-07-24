@@ -2,6 +2,12 @@
 
 웹: `https://<gateway-host>/operating/` (예: https://test2.studiobasa.com/operating/)
 
+## 배포 (GitOps / ArgoCD)
+
+- ArgoCD Application: `deploy/argocd/application.yaml` → `kubectl apply -f`. `deploy/k8s`(kustomize) 추적, 자동 동기화(prune+selfHeal).
+- **버전 업**: 이미지 빌드/푸시(`make images push`) 후 `deploy/k8s/kustomization.yaml` 의 `images.newTag` 수정 → 커밋/푸시 → ArgoCD 자동 배포.
+- 시크릿(`canggu-secrets`)은 git 밖 1회 부트스트랩. 직접 `kubectl`/이미지 수정은 selfHeal 로 되돌려지므로 git 을 통해 변경.
+
 ## 로그인 / 사용자
 
 - 부트스트랩 admin: 사용자 `admin`, 비밀번호는 Secret `canggu-secrets.adminPassword`.
@@ -13,6 +19,7 @@
     - role: `admin`(변경 가능) | `viewer`(읽기)
     - scope_type=`cluster`(scope_ref="" 전체 / "<cluster>" 특정) | `namespace`(scope_ref="<cluster>/<ns>")
   - `PATCH /api/auth/users/{username}`(비번/role/scope 변경), `DELETE`(삭제). 자기 자신·마지막 admin 삭제/강등 차단.
+- **본인 비밀번호 변경**(모든 로그인 사용자): 헤더 "비밀번호 변경" 또는 `POST /api/auth/change-password` `{old_password,new_password}`(현재 비번 확인, 6자 이상).
 
 ## 자동조정 모드 (관여 제어)
 

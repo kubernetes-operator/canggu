@@ -7,6 +7,14 @@ resources:
   - 20-agent-rbac.yaml
   - 30-agent.yaml
   - 40-httproute.yaml
-# 시크릿(canggu-secrets)은 커밋하지 않는다. 배포 전 아래로 생성:
+
+# 이미지 태그 중앙 관리(GitOps): 버전 업은 여기 newTag 만 수정 → 커밋하면 ArgoCD 가 배포.
+images:
+  - name: registry.local.cloud:5000/canggu/hub
+    newTag: "0.1.19"
+  - name: registry.local.cloud:5000/canggu/agent
+    newTag: "0.1.11"
+
+# 시크릿(canggu-secrets)은 커밋하지 않는다. ArgoCD 동기화 전 1회 부트스트랩:
 #   kubectl -n canggu-system create secret generic canggu-secrets \
-#     --from-literal=agentToken="$(openssl rand -hex 24)"
+#     --from-literal=agentToken=... --from-literal=jwtSecret=... --from-literal=adminPassword=...

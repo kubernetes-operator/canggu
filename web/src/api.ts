@@ -166,6 +166,8 @@ export const api = {
   login: (username: string, password: string) =>
     post("api/auth/login", { username, password }) as Promise<{ token: string; user: Me }>,
   me: () => get("api/auth/me") as Promise<Me>,
+  changePassword: (old_password: string, new_password: string) =>
+    post("api/auth/change-password", { old_password, new_password }),
   rules: () => get("api/rules") as Promise<
     { id: string; title: string; risk: string; default_auto: boolean; enabled: boolean; auto_apply: string }[]
   >,
