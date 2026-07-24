@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # 자동조정 엔진 기본값
     rightsize_factor: float = 1.5           # usage_p95 * factor > requests 이면 우측정렬
     remediation_default_frozen: bool = False
+    # 동일 이슈(fingerprint) 자동 재적용 억제 기간(안티플래핑).
+    remediation_cooldown_seconds: float = 300.0
 
     cors_origins: str = "http://localhost:5173"
 

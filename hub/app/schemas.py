@@ -184,6 +184,6 @@ class Issue(BaseModel):
     evidence: dict = Field(default_factory=dict)
     suggested_action: SuggestedAction | None = None
     # 이 이슈에 대해 엔진이 취한 조치(모드 게이트 결과)
-    disposition: Literal["suggested_only", "applied", "auto_dispatched", "manual_required"] = (
-        "suggested_only"
-    )
+    disposition: Literal[
+        "suggested_only", "applied", "auto_dispatched", "manual_required", "cooldown"
+    ] = "suggested_only"

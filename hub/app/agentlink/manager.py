@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -33,6 +34,7 @@ class Hub:
         self._seq: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._pending: dict[str, asyncio.Future] = {}  # command_id -> 결과 future(요청-응답형)
+        self._last_dispatch: dict[str, float] = {}  # fingerprint -> monotonic ts(안티플래핑)
 
     # ── agent 수명주기 ──────────────────────────────────────────────────────
     async def register_agent(self, hello: Hello, ws: WebSocket) -> None:
@@ -110,8 +112,15 @@ class Hub:
             }
         )
 
-        # active + auto_apply 이슈에 대한 명령 발송
-        for cmd, issue in zip(commands, [i for i in issues if i.disposition == "auto_dispatched"]):
+        # active + auto_apply 이슈에 대한 명령 발송 (동일 fingerprint 쿨다운으로 플래핑 억제)
+        now = time.monotonic()
+        auto_issues = [i for i in issues if i.disposition == "auto_dispatched"]
+        for cmd, issue in zip(commands, auto_issues):
+            if not engine.should_dispatch(
+                issue.fingerprint, self._last_dispatch, now, s.remediation_cooldown_seconds
+            ):
+                issue.disposition = "cooldown"
+                continue
             await self._dispatch(cmd, issue, cluster_mode)
 
     async def _dispatch(self, cmd: Command, issue: Issue, mode_at_issue: str) -> None:

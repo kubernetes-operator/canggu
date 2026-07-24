@@ -189,6 +189,18 @@ def test_active_dispatches():
     assert all(i.disposition == "auto_dispatched" for i in issues if i.suggested_action)
 
 
+def test_cooldown_suppresses_repeat_dispatch():
+    last: dict[str, float] = {}
+    # 첫 디스패치 허용
+    assert engine.should_dispatch("fp1", last, now=1000.0, cooldown=300.0) is True
+    # 쿨다운 이내 재시도는 억제
+    assert engine.should_dispatch("fp1", last, now=1100.0, cooldown=300.0) is False
+    # 쿨다운 경과 후 재허용
+    assert engine.should_dispatch("fp1", last, now=1400.0, cooldown=300.0) is True
+    # 다른 fingerprint 는 독립
+    assert engine.should_dispatch("fp2", last, now=1100.0, cooldown=300.0) is True
+
+
 def test_frozen_blocks_dispatch():
     issues = engine.evaluate(_snap_with_underprovisioned(), 1.5)
     issues, commands = engine.plan_dispatch(

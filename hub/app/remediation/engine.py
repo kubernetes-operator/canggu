@@ -49,6 +49,16 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
     return issues
 
 
+def should_dispatch(
+    fingerprint: str, last_dispatch: dict[str, float], now: float, cooldown: float
+) -> bool:
+    """안티플래핑: 동일 fingerprint 가 cooldown 이내 재적용되면 False. 허용 시 시각 기록."""
+    if now - last_dispatch.get(fingerprint, float("-inf")) < cooldown:
+        return False
+    last_dispatch[fingerprint] = now
+    return True
+
+
 def apply_rule_config(issues: list[Issue], config: dict[str, dict]) -> list[Issue]:
     """런타임 규칙 설정 적용: 비활성 규칙 이슈 제거 + auto_apply 오버라이드."""
     out: list[Issue] = []
