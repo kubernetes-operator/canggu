@@ -23,6 +23,8 @@ body { margin: 0; }
 
 header { display: flex; align-items: baseline; gap: 12px; }
 header h1 { margin: 0; color: var(--accent); letter-spacing: 1px; }
+header h1.brand { cursor: pointer; font-size: 22px; }
+header h1.brand:hover { color: #6fb2ff; }
 header .sub { color: var(--muted); font-size: 13px; }
 .spacer { flex: 1; }
 select, button {

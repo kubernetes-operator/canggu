@@ -169,11 +169,17 @@ export default function App() {
   if (authReady && !me) return <Login onLogin={setMe} />;
   if (!me) return <div className="app"><div className="empty">로딩 중…</div></div>;
 
+  function goHome() {
+    setNs("all");
+    setEdit(null);
+    setPwOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <div className="app">
       <header>
-        <h1>canggu</h1>
-        <span className="sub">Kubernetes 자동 운영</span>
+        <h1 className="brand" onClick={goHome} title="처음 페이지로">Kubernetes 자동 운영</h1>
         <div className="spacer" />
         {cluster?.stale && (
           <span className="stale-badge">
@@ -553,8 +559,8 @@ function Login({ onLogin }: { onLogin: (me: Me) => void }) {
   return (
     <div className="app login-wrap">
       <form className="login" onSubmit={submit}>
-        <h1>canggu</h1>
-        <div className="sub">Kubernetes 자동 운영 · 로그인</div>
+        <h1>Kubernetes 자동 운영</h1>
+        <div className="sub">canggu · 로그인</div>
         <input placeholder="아이디" value={u} onChange={(e) => setU(e.target.value)} autoFocus />
         <input placeholder="비밀번호" type="password" value={p}
           onChange={(e) => setP(e.target.value)} />

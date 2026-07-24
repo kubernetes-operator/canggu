@@ -11,7 +11,7 @@ resources:
 # 이미지 태그 중앙 관리(GitOps): 버전 업은 여기 newTag 만 수정 → 커밋하면 ArgoCD 가 배포.
 images:
   - name: registry.local.cloud:5000/canggu/hub
-    newTag: "0.1.19"
+    newTag: "0.1.20"
   - name: registry.local.cloud:5000/canggu/agent
     newTag: "0.1.11"
 
