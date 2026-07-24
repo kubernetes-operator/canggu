@@ -176,6 +176,15 @@ export const api = {
   listUsers: () => get("api/auth/users") as Promise<Me[]>,
   createUser: (u: { username: string; password: string; role: string; scope_type: string; scope_ref: string }) =>
     post("api/auth/users", u),
+  updateUser: (username: string, body: { password?: string; role?: string; scope_type?: string; scope_ref?: string }) =>
+    fetch(P(`api/auth/users/${encodeURIComponent(username)}`), {
+      method: "PATCH", headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(j),
+  deleteUser: (username: string) =>
+    fetch(P(`api/auth/users/${encodeURIComponent(username)}`), {
+      method: "DELETE", headers: authHeaders(),
+    }).then(j),
   clusters: () => get("api/clusters") as Promise<Cluster[]>,
   namespaces: (c: string) => get(`api/clusters/${c}/namespaces`) as Promise<string[]>,
   pods: (c: string, ns: string) =>

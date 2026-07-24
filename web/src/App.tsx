@@ -674,12 +674,25 @@ function UsersPanel({ isAdmin, clusterId }: { isAdmin: boolean; clusterId: strin
         <button className="primary" disabled={busy} onClick={create}>사용자 생성</button>
       </div>
       <table>
-        <thead><tr><th>아이디</th><th>Role</th><th>Scope</th></tr></thead>
+        <thead><tr><th>아이디</th><th>Role</th><th>Scope</th><th></th></tr></thead>
         <tbody>
           {users.map((x) => (
             <tr key={x.username}>
               <td>{x.username}</td><td>{x.role}</td>
               <td className="mono">{x.scope_type}{x.scope_ref ? `:${x.scope_ref}` : " (전체)"}</td>
+              <td>
+                <button onClick={async () => {
+                  const npw = prompt(`'${x.username}' 새 비밀번호`);
+                  if (!npw) return;
+                  try { await api.updateUser(x.username, { password: npw }); alert("변경됨"); }
+                  catch (e) { alert("실패: " + e); }
+                }}>비번재설정</button>
+                <button onClick={async () => {
+                  if (!confirm(`'${x.username}' 삭제?`)) return;
+                  try { await api.deleteUser(x.username); load(); }
+                  catch (e) { alert("삭제 실패: " + e); }
+                }}>삭제</button>
+              </td>
             </tr>
           ))}
         </tbody>

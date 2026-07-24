@@ -51,6 +51,38 @@ def list_users() -> list[User]:
         return list(db.scalars(select(User)))
 
 
+def count_admins() -> int:
+    with SessionLocal() as db:
+        return len(list(db.scalars(select(User).where(User.role == "admin"))))
+
+
+def delete_user(username: str) -> None:
+    with SessionLocal() as db:
+        u = db.get(User, username)
+        if u is not None:
+            db.delete(u)
+            db.commit()
+
+
+def update_user(
+    username: str, *, role: str | None = None, scope_type: str | None = None,
+    scope_ref: str | None = None, pw_hash: str | None = None, salt: str | None = None,
+) -> None:
+    with SessionLocal() as db:
+        u = db.get(User, username)
+        if u is None:
+            return
+        if role is not None:
+            u.role = role
+        if scope_type is not None:
+            u.scope_type = scope_type
+        if scope_ref is not None:
+            u.scope_ref = scope_ref
+        if pw_hash is not None and salt is not None:
+            u.pw_hash, u.salt = pw_hash, salt
+        db.commit()
+
+
 def create_user(
     username: str, pw_hash: str, salt: str, role: str, scope_type: str = "cluster",
     scope_ref: str = "",

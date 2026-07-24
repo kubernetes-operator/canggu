@@ -75,3 +75,49 @@ async def list_users(_: auth.Principal = Depends(auth.require_admin)) -> list[di
     users = await run_in_threadpool(crud.list_users)
     return [{"username": u.username, "role": u.role, "scope_type": u.scope_type,
              "scope_ref": u.scope_ref} for u in users]
+
+
+class UpdateUserBody(BaseModel):
+    password: str | None = None
+    role: str | None = None
+    scope_type: str | None = None
+    scope_ref: str | None = None
+
+
+@router.patch("/users/{username}")
+async def update_user(
+    username: str, body: UpdateUserBody, _: auth.Principal = Depends(auth.require_admin)
+) -> dict:
+    target = await run_in_threadpool(crud.get_user, username)
+    if target is None:
+        raise HTTPException(404, "사용자 없음")
+    if body.role is not None and body.role not in ("admin", "viewer"):
+        raise HTTPException(400, "role 값 오류")
+    # 마지막 admin 을 viewer 로 강등 방지(lockout).
+    if body.role == "viewer" and target.role == "admin":
+        if await run_in_threadpool(crud.count_admins) <= 1:
+            raise HTTPException(409, "마지막 admin 은 강등할 수 없습니다")
+    pw_hash = salt = None
+    if body.password:
+        salt = auth.make_salt()
+        pw_hash = auth.hash_password(body.password, salt)
+    await run_in_threadpool(
+        crud.update_user, username, role=body.role, scope_type=body.scope_type,
+        scope_ref=body.scope_ref, pw_hash=pw_hash, salt=salt,
+    )
+    return {"ok": True, "username": username}
+
+
+@router.delete("/users/{username}")
+async def delete_user(
+    username: str, principal: auth.Principal = Depends(auth.require_admin)
+) -> dict:
+    if username == principal.username:
+        raise HTTPException(400, "자기 자신은 삭제할 수 없습니다")
+    target = await run_in_threadpool(crud.get_user, username)
+    if target is None:
+        raise HTTPException(404, "사용자 없음")
+    if target.role == "admin" and await run_in_threadpool(crud.count_admins) <= 1:
+        raise HTTPException(409, "마지막 admin 은 삭제할 수 없습니다")
+    await run_in_threadpool(crud.delete_user, username)
+    return {"ok": True, "deleted": username}
