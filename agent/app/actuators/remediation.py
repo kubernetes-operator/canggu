@@ -77,10 +77,18 @@ class Actuator:
         if kind not in _SUPPORTED_KINDS:
             return self._result(cmd, "FAILED", error=f"미지원 kind: {kind}")
 
+        patch, dry_run = cmd.get("patch", {}), cmd.get("dry_run", False)
+
+        # 실제 적용 전 preflight dry-run 으로 admission(quota/정책/웹훅) 검증.
+        if not dry_run:
+            try:
+                self.kube.apply_patch(namespace, kind, name, patch, dry_run=True)
+            except Exception as e:  # noqa: BLE001
+                log.warning("preflight 거부 → 실제 적용 스킵: %s/%s %s", kind, name, e)
+                return self._result(cmd, "FAILED", error=f"preflight(admission) 거부: {e}")
+
         try:
-            rv_before, rv_after = self.kube.apply_patch(
-                namespace, kind, name, cmd.get("patch", {}), cmd.get("dry_run", False)
-            )
+            rv_before, rv_after = self.kube.apply_patch(namespace, kind, name, patch, dry_run)
         except Exception as e:  # noqa: BLE001
             log.exception("패치 적용 실패")
             return self._result(cmd, "FAILED", error=str(e))

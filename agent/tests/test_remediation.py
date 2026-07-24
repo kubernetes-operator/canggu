@@ -35,6 +35,25 @@ def test_apply_ok():
     assert res["resource_version_after"] == "mock-2"
 
 
+def test_preflight_rejection_skips_real_apply():
+    """preflight(dry-run)에서 admission 거부되면 실제 적용을 하지 않고 FAILED."""
+    kube = KubeClient()
+    calls = {"dry": 0, "real": 0}
+
+    def fake_apply(ns, kind, name, patch, dry_run):
+        if dry_run:
+            calls["dry"] += 1
+            raise RuntimeError("exceeded quota: requests.memory")
+        calls["real"] += 1
+        return ("1", "2")
+
+    kube.apply_patch = fake_apply  # type: ignore[assignment]
+    res = Actuator(kube).handle(_cmd(command_id="pf1"))
+    assert res["phase"] == "FAILED"
+    assert "preflight" in res["error"]
+    assert calls["dry"] == 1 and calls["real"] == 0  # 실제 적용 시도 안 함
+
+
 def test_dry_run_no_change():
     res = _actuator().handle(_cmd(dry_run=True))
     assert res["phase"] == "APPLIED"
