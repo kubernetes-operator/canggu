@@ -145,6 +145,23 @@ def test_apply_rule_config_auto_apply_override():
     assert sp is not None and sp.suggested_action.auto_apply is False
 
 
+def test_unschedulable_and_imagepull_diagnostic():
+    from app.schemas import Pod
+
+    snap = _snap_with_underprovisioned()
+    snap.pods = [
+        Pod(namespace="team-a", name="api-p", owner_kind="Deployment", owner_name="api",
+            phase="Pending", unschedulable=True),
+        Pod(namespace="team-a", name="api-i", owner_kind="Deployment", owner_name="api",
+            waiting_reason="ImagePullBackOff"),
+    ]
+    issues = engine.evaluate(snap, 1.5)
+    u = _by_rule(issues, "unschedulable")
+    i = _by_rule(issues, "image-pull-backoff")
+    assert u is not None and u.suggested_action is None
+    assert i is not None and i.suggested_action is None
+
+
 def test_effective_mode():
     assert engine.effective_mode("ACTIVE", None) == "ACTIVE"
     assert engine.effective_mode("ACTIVE", "OBSERVE") == "OBSERVE"  # observe 우선

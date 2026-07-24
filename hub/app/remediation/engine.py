@@ -42,6 +42,8 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
             rules.detect_oom_killed(cid, wl, pods),
             rules.detect_crashloop(cid, wl, pods),
             rules.detect_pod_spread(cid, wl),
+            rules.detect_unschedulable(cid, wl, pods),
+            rules.detect_image_pull_backoff(cid, wl, pods),
         ]
         issues.extend(i for i in candidates if i is not None)
     return issues

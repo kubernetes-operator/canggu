@@ -41,6 +41,7 @@ class Pod(BaseModel):
     restart_count: int = 0
     waiting_reason: str = ""
     last_terminated_reason: str = ""
+    unschedulable: bool = False
     owner_kind: str = ""
     owner_name: str = ""
 

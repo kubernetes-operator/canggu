@@ -162,6 +162,11 @@ class KubeClient:
                         (p.metadata.namespace, vol.persistent_volume_claim.claim_name), set()
                     ).add(f"{owner_kind}/{owner_name}")
             restart = sum((cs.restart_count or 0) for cs in (p.status.container_statuses or []))
+            unsched = any(
+                (c.type == "PodScheduled" and c.status == "False"
+                 and (c.reason or "") == "Unschedulable")
+                for c in (p.status.conditions or [])
+            )
             pods.append({
                 "namespace": p.metadata.namespace,
                 "name": p.metadata.name,
@@ -170,6 +175,7 @@ class KubeClient:
                 "restart_count": restart,
                 "waiting_reason": _first_waiting(p),
                 "last_terminated_reason": _first_terminated(p),
+                "unschedulable": unsched,
                 "owner_kind": owner_kind,
                 "owner_name": owner_name,
             })

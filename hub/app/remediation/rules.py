@@ -24,6 +24,8 @@ RULE_CATALOG = [
     {"id": "oom-killed", "title": "OOMKilled → 메모리 limit 증가", "risk": "med", "default_auto": True},
     {"id": "crashloop", "title": "CrashLoopBackOff(진단 전용)", "risk": "high", "default_auto": False},
     {"id": "pod-spread", "title": "노드 분산 강제(topologySpread)", "risk": "med", "default_auto": True},
+    {"id": "unschedulable", "title": "스케줄 불가(리소스 부족 등, 진단)", "risk": "warn", "default_auto": False},
+    {"id": "image-pull-backoff", "title": "ImagePullBackOff(이미지/인증, 진단)", "risk": "warn", "default_auto": False},
 ]
 
 HEADROOM = 1.2       # 우측정렬 시 p95 위에 얹는 여유
@@ -257,6 +259,37 @@ def detect_pod_spread(cluster_id: str, wl: Workload) -> Issue | None:
     )
 
 
-# ── 로드맵 스텁 ──────────────────────────────────────────────────────────────
-# detect_unschedulable       규칙 #6  (Phase 4+)
-# detect_image_pull_backoff  규칙 #8  (Phase 4+)
+def detect_unschedulable(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #6: 소유 pod 가 스케줄 불가(Unschedulable) → 진단(자동 조치 없음)."""
+    stuck = [p for p in pods if p.unschedulable]
+    if not stuck:
+        return None
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "unsched"),
+        rule_id="unschedulable",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 스케줄 불가 파드 {len(stuck)}개",
+        detail="노드 리소스 부족/제약으로 스케줄되지 않는 파드가 있습니다(진단). requests 축소 또는 노드 증설 검토.",
+        evidence={"pods": [p.name for p in stuck[:5]]},
+        suggested_action=None,
+    )
+
+
+def detect_image_pull_backoff(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #8: ImagePullBackOff/ErrImagePull → 진단(이미지 태그/레지스트리 인증)."""
+    bad = [p for p in pods if p.waiting_reason in ("ImagePullBackOff", "ErrImagePull")]
+    if not bad:
+        return None
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "imagepull"),
+        rule_id="image-pull-backoff",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 이미지 pull 실패 {len(bad)}개",
+        detail="이미지 태그 오류 또는 레지스트리 인증 문제로 보입니다(진단).",
+        evidence={"pods": [p.name for p in bad[:5]]},
+        suggested_action=None,
+    )
