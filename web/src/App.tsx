@@ -30,6 +30,13 @@ export default function App() {
   const [err, setErr] = useState<string>("");
   const [edit, setEdit] = useState<EditState | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
+  const [refreshMs, setRefreshMs] = useState<number>(
+    () => Number(localStorage.getItem("canggu_refresh") ?? 60000),
+  );
+  function changeRefresh(ms: number) {
+    setRefreshMs(ms);
+    localStorage.setItem("canggu_refresh", String(ms));
+  }
 
   const cluster = clusters.find((c) => c.id === selected);
   const isAdmin = me?.role === "admin";
@@ -88,15 +95,17 @@ export default function App() {
 
   useEffect(() => {
     refreshClusters();
-    const t = setInterval(refreshClusters, 5000);
+    if (refreshMs <= 0) return;
+    const t = setInterval(refreshClusters, refreshMs);
     return () => clearInterval(t);
-  }, [refreshClusters]);
+  }, [refreshClusters, refreshMs]);
 
   useEffect(() => {
     refreshData();
-    const t = setInterval(refreshData, 4000);
+    if (refreshMs <= 0) return;
+    const t = setInterval(refreshData, refreshMs);
     return () => clearInterval(t);
-  }, [refreshData]);
+  }, [refreshData, refreshMs]);
 
   // 라이브 피드 WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -187,6 +196,16 @@ export default function App() {
             {!cluster.connected && " · agent 미접속"}
           </span>
         )}
+        <label className="stat">
+          🔄
+          <select value={refreshMs} onChange={(e) => changeRefresh(Number(e.target.value))}>
+            <option value={10000}>10초</option>
+            <option value={30000}>30초</option>
+            <option value={60000}>1분</option>
+            <option value={600000}>10분</option>
+            <option value={0}>새로고침 안함</option>
+          </select>
+        </label>
         <span className="stat">
           👤 {me.username} · {me.role}
           {me.role !== "admin" && " (읽기전용)"}
