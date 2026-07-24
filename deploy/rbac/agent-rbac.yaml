@@ -1,0 +1,94 @@
+# canggu agent RBAC 스켈레톤 (최소권한 원칙).
+# read-only collector SA 와 좁게 스코프된 mutator SA 를 분리한다.
+# 실제 배포 전 verb/resource 를 환경에 맞게 검토할 것. 자세한 근거는 docs/rbac-model.md.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: canggu-system
+---
+# ── collector: 읽기 전용 ──────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canggu-agent-collector
+  namespace: canggu-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: canggu-agent-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "nodes", "namespaces",
+                "persistentvolumes", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: canggu-agent-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canggu-agent-collector
+subjects:
+  - kind: ServiceAccount
+    name: canggu-agent-collector
+    namespace: canggu-system
+---
+# ── mutator: 자동조정에 필요한 최소 변경 권한 ─────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canggu-agent-mutator
+  namespace: canggu-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: canggu-agent-mutator
+rules:
+  # 규칙 #3/#5: 리소스 우측정렬 · topologySpread 주입
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "patch"]
+  # 기능9: 네임스페이스 SA/RBAC 발급 + TokenRequest (단기 토큰)
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "create", "delete"]
+  # 기능10: Velero 백업/복구 (설치되어 있을 때)
+  - apiGroups: ["velero.io"]
+    resources: ["backups", "restores"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: canggu-agent-mutator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canggu-agent-mutator
+subjects:
+  - kind: ServiceAccount
+    name: canggu-agent-mutator
+    namespace: canggu-system

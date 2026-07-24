@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+// canggu agent <-> hub 계약 (정식).
+//
+// Phase 0 는 이 스키마의 JSON 직렬화를 WebSocket(/agentlink/ws)으로 주고받는
+// 폴백 전송을 사용한다. Phase 1+ 에서 아래 서비스로 gRPC 양방향 스트림으로 승격한다.
+// `make proto` 로 stub 을 생성한다 (grpcio-tools 필요).
+
+package canggu.v1;
+
+option go_package = "github.com/osci/canggu/proto/v1;cangguv1";
+
+// ── 서비스 ────────────────────────────────────────────────────────────────
+// agent 가 outbound 로 Connect 스트림을 연다. 방화벽 친화적.
+service AgentHub {
+  // 양방향 스트림: agent -> AgentFrame (telemetry/result/hello),
+  //               hub   -> HubFrame   (command/ack/config).
+  rpc Connect(stream AgentFrame) returns (stream HubFrame);
+}
+
+// ── agent -> hub ────────────────────────────────────────────────────────────
+message AgentFrame {
+  oneof payload {
+    Hello hello = 1;             // 스트림 개시 (인증/버전/재동기화)
+    TelemetrySnapshot telemetry = 2;
+    CommandResult result = 3;    // 명령 적용 결과
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message Hello {
+  string cluster_id = 1;
+  string agent_version = 2;
+  string auth_token = 3;         // hub 발급 단기 서명 토큰
+  uint64 last_command_seq = 4;   // 재연결 시 재동기화 기준
+  bool metrics_available = 5;    // Prometheus/metrics-server 가용 여부
+}
+
+message Heartbeat { uint64 monotonic_ts = 1; }
+
+// 클러스터 상태 스냅샷. Phase 0 는 inventory 만.
+message TelemetrySnapshot {
+  string cluster_id = 1;
+  uint64 generation = 2;         // 스냅샷 세대 (재동기화 판단)
+  repeated Namespace namespaces = 3;
+  repeated Workload workloads = 4;
+  repeated Pod pods = 5;
+  repeated Service services = 6;   // Phase 1+
+  repeated StorageLink storage = 7; // Phase 4+
+  repeated RouteEdge routes = 8;    // Phase 4+ (Gateway API)
+}
+
+message Namespace { string name = 1; }
+
+message Workload {
+  string namespace = 1;
+  string kind = 2;               // Deployment | StatefulSet | ...
+  string name = 3;
+  int32 replicas_desired = 4;
+  int32 replicas_ready = 5;
+  repeated Container containers = 6;
+  int32 distinct_nodes = 7;      // 기능8: 현재 파드가 걸친 노드 수
+}
+
+message Container {
+  string name = 1;
+  ResourceQ requests = 2;
+  ResourceQ limits = 3;
+  // 관측된 사용량 (Phase 1+, metrics 소스에서)
+  ResourceQ usage_p95 = 4;
+}
+
+message ResourceQ {
+  string cpu = 1;      // k8s quantity 문자열 (예: "250m")
+  string memory = 2;   // (예: "256Mi")
+}
+
+message Pod {
+  string namespace = 1;
+  string name = 2;
+  string node = 3;
+  string phase = 4;            // Running | Pending | ...
+  int32 restart_count = 5;
+  string waiting_reason = 6;   // CrashLoopBackOff | ImagePullBackOff | ""
+  string last_terminated_reason = 7; // OOMKilled | ""
+  string owner_kind = 8;
+  string owner_name = 9;
+}
+
+message Service {
+  string namespace = 1;
+  string name = 2;
+  int32 ready_endpoints = 3;
+  int32 desired_endpoints = 4;
+}
+
+message StorageLink {
+  string namespace = 1;
+  string pvc = 2;
+  string pv = 3;
+  string storage_class = 4;
+  string bound_workload = 5;
+  string phase = 6;            // Bound | Pending | ...
+}
+
+message RouteEdge {
+  string namespace = 1;
+  string httproute = 2;
+  string gateway = 3;
+  string backend_service = 4;
+  int32 weight = 5;
+}
+
+// ── hub -> agent ────────────────────────────────────────────────────────────
+message HubFrame {
+  oneof payload {
+    Command command = 1;
+    Ack ack = 2;             // hello/telemetry 수신 확인
+    ClusterConfig config = 3; // 모드 등 설정 하달
+  }
+}
+
+message Ack { uint64 command_seq = 1; string message = 2; }
+
+message ClusterConfig {
+  Mode cluster_mode = 1;
+  map<string, Mode> namespace_mode = 2; // ns -> mode override
+  bool remediation_frozen = 3;          // 전역 kill-switch
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  OBSERVE = 1;   // 관찰 전용 — 개입 안 함
+  ACTIVE = 2;    // 자동조정 허용
+}
+
+message Command {
+  string command_id = 1;       // UUID, 멱등 키
+  uint64 command_seq = 2;
+  string cluster_id = 3;
+  string namespace = 4;
+  string target_kind = 5;      // Deployment | ...
+  string target_name = 6;
+  string type = 7;             // 규칙 action type (예: "rightsize")
+  bytes patch = 8;             // strategic-merge/JSON patch (JSON 직렬화)
+  string patch_type = 9;       // "strategic" | "merge" | "json"
+  bool dry_run = 10;
+  string expected_resource_version = 11; // 낙관적 동시성
+  uint64 ttl_seconds = 12;
+  string issued_by = 13;
+  string capability_sig = 14;  // hub 서명 (agent 검증)
+}
+
+message CommandResult {
+  string command_id = 1;
+  uint64 command_seq = 2;
+  Phase phase = 3;
+  string resource_version_before = 4;
+  string resource_version_after = 5;
+  string error = 6;
+  bytes applied_patch = 7;     // 실제 적용된 patch (감사)
+
+  enum Phase {
+    PHASE_UNSPECIFIED = 0;
+    DELIVERED = 1;
+    APPLIED = 2;
+    FAILED = 3;
+    SKIPPED_OBSERVE = 4;   // observe 모드라 미적용
+    SKIPPED_SCOPE = 5;     // scope 재검증 실패
+    EXPIRED = 6;
+  }
+}

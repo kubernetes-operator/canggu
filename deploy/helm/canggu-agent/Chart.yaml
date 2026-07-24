@@ -1,0 +1,6 @@
+apiVersion: v2
+name: canggu-agent
+description: canggu 클러스터당 agent (수집기 + 액추에이터)
+type: application
+version: 0.0.1
+appVersion: "0.0.1"

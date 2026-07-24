@@ -1,0 +1,22 @@
+image:
+  repository: canggu/agent
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
+
+# 이 agent 가 담당하는 클러스터 식별자.
+clusterId: "prod-cluster-1"
+
+hub:
+  # hub 의 WebSocket(Phase 0) 또는 gRPC(Phase 1+) 엔드포인트.
+  url: "wss://canggu.example.com/agentlink/ws"
+  # 부트스트랩 토큰은 외부 Secret 으로 주입 (차트에 넣지 말 것).
+  existingSecret: canggu-agent-secret
+
+mock: false
+
+# deploy/rbac/agent-rbac.yaml 로 생성한 SA. read-only 는 collector, 변경은 mutator.
+serviceAccountName: canggu-agent-mutator
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 256Mi }

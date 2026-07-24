@@ -1,0 +1,75 @@
+# agent SA: 이 클러스터를 관리. read(collector) + mutate 권한을 최소로.
+# 참고 스켈레톤은 deploy/rbac/agent-rbac.yaml (SA 2개 분리안). 실제 배포는 이 파일 사용.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canggu-agent
+  namespace: canggu-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: canggu-agent-read
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "nodes", "namespaces",
+                "persistentvolumes", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: canggu-agent-mutate
+rules:
+  # 규칙 #3/#5: 우측정렬 · topologySpread 주입
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "patch"]
+  # 기능9: NS SA/RBAC 발급 + 단기 토큰 (Phase 3)
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "create", "delete"]
+  # 기능9: RoleBinding 이 admin/edit/view ClusterRole 을 참조하도록 bind 허용
+  # (권한상승 방지 규칙 대응 — 이 3개 role 에만 한정).
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    verbs: ["bind"]
+    resourceNames: ["admin", "edit", "view"]
+  # 기능10: Velero (설치 시, Phase 5)
+  - apiGroups: ["velero.io"]
+    resources: ["backups", "restores"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: canggu-agent-read
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: canggu-agent-read }
+subjects:
+  - { kind: ServiceAccount, name: canggu-agent, namespace: canggu-system }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: canggu-agent-mutate
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: canggu-agent-mutate }
+subjects:
+  - { kind: ServiceAccount, name: canggu-agent, namespace: canggu-system }

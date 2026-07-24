@@ -1,0 +1,29 @@
+[project]
+name = "canggu-hub"
+version = "0.0.1"
+description = "canggu hub — 중앙 aggregator + API + 자동조정 엔진"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",       # postgres (docker-compose). sqlite 는 표준 라이브러리.
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "grpcio-tools>=1.62",         # `make proto` 용
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

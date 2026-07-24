@@ -1,0 +1,38 @@
+# agent: 이 클러스터에 배포되어 in-cluster SA 로 조회/변경하고 hub 로 outbound 접속.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canggu-agent
+  namespace: canggu-system
+  labels: { app.kubernetes.io/name: canggu-agent }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # 동일 클러스터에 agent 중복 방지(롤아웃 시 old→new 순차)
+  selector:
+    matchLabels: { app.kubernetes.io/name: canggu-agent }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: canggu-agent }
+    spec:
+      serviceAccountName: canggu-agent
+      containers:
+        - name: agent
+          image: registry.local.cloud:5000/canggu/agent:0.1.7
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CANGGU_MOCK
+              value: "0"
+            - name: CANGGU_CLUSTER_ID
+              value: playce
+            - name: CANGGU_HUB_URL
+              value: ws://canggu-hub.canggu-system.svc.cluster.local:8000/agentlink/ws
+            - name: CANGGU_KUBECONFIG_SERVER
+              value: https://kubernetes:6443
+            - name: CANGGU_PROMETHEUS_URL
+              value: http://prometheus-stack-kube-prom-prometheus.monitoring:9090
+            - name: CANGGU_CLUSTER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: canggu-secrets, key: agentToken }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }

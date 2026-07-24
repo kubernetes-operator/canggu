@@ -1,0 +1,79 @@
+# hub: FastAPI(API+WS) + 정적 SPA. sqlite 를 NFS PVC 에 영속(단일 replica).
+# Postgres 로 전환하려면 CANGGU_DATABASE_URL 을 postgres DSN 으로 바꾸고 PVC 제거.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: canggu-hub-data
+  namespace: canggu-system
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nfs-nas-sc-main
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canggu-hub
+  namespace: canggu-system
+  labels: { app.kubernetes.io/name: canggu-hub }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # sqlite 단일 writer
+  selector:
+    matchLabels: { app.kubernetes.io/name: canggu-hub }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: canggu-hub }
+    spec:
+      containers:
+        - name: hub
+          image: registry.local.cloud:5000/canggu/hub:0.1.10
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          env:
+            - name: CANGGU_DATABASE_URL
+              value: sqlite:////data/canggu.db
+            - name: CANGGU_WEB_DIST
+              value: /app/web_dist
+            - name: CANGGU_CORS_ORIGINS
+              value: https://test2.studiobasa.com
+            - name: CANGGU_AGENT_SHARED_TOKEN
+              valueFrom:
+                secretKeyRef: { name: canggu-secrets, key: agentToken }
+            - name: CANGGU_AUTH_ENABLED
+              value: "true"
+            - name: CANGGU_ADMIN_USER
+              value: admin
+            - name: CANGGU_JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: canggu-secrets, key: jwtSecret }
+            - name: CANGGU_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: canggu-secrets, key: adminPassword }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: canggu-hub-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: canggu-hub
+  namespace: canggu-system
+  labels: { app.kubernetes.io/name: canggu-hub }
+spec:
+  selector: { app.kubernetes.io/name: canggu-hub }
+  ports:
+    - { name: http, port: 8000, targetPort: 8000 }

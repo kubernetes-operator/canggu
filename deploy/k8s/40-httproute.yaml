@@ -1,0 +1,32 @@
+# test2.studiobasa.com/operating/ 를 canggu-hub 로 라우팅.
+# 기존 default/gateway (nginx) 공유 패턴을 따른다.
+#  - /operating (정확) → 302 로 /operating/ 로 리다이렉트 (trailing slash 보정)
+#  - /operating/* → prefix 를 / 로 rewrite 후 canggu-hub:8000 으로 전달
+#    (웹은 base=/operating/ 로 빌드되어 자산 URL 이 정상 로드됨)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: canggu-route
+  namespace: canggu-system
+spec:
+  hostnames:
+    - test2.studiobasa.com
+  parentRefs:
+    - { group: gateway.networking.k8s.io, kind: Gateway, name: gateway, namespace: default, sectionName: http }
+    - { group: gateway.networking.k8s.io, kind: Gateway, name: gateway, namespace: default, sectionName: https }
+  rules:
+    - matches:
+        - path: { type: Exact, value: /operating }
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path: { type: ReplaceFullPath, replaceFullPath: /operating/ }
+            statusCode: 302
+    - matches:
+        - path: { type: PathPrefix, value: /operating }
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path: { type: ReplacePrefixMatch, replacePrefixMatch: / }
+      backendRefs:
+        - { group: "", kind: Service, name: canggu-hub, port: 8000, weight: 1 }

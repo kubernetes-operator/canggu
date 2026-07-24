@@ -1,0 +1,20 @@
+image:
+  repository: canggu/hub
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+
+# 시크릿은 차트에 넣지 말 것. 외부 Secret 을 참조한다.
+config:
+  # databaseUrl / agentSharedToken 은 existingSecret 으로 주입.
+  existingSecret: canggu-hub-secrets
+  corsOrigins: "https://canggu.example.com"
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: "1", memory: 512Mi }

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: canggu-system
+resources:
+  - 00-namespace.yaml
+  - 10-hub.yaml
+  - 20-agent-rbac.yaml
+  - 30-agent.yaml
+  - 40-httproute.yaml
+# 시크릿(canggu-secrets)은 커밋하지 않는다. 배포 전 아래로 생성:
+#   kubectl -n canggu-system create secret generic canggu-secrets \
+#     --from-literal=agentToken="$(openssl rand -hex 24)"

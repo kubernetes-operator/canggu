@@ -1,0 +1,6 @@
+apiVersion: v2
+name: canggu-hub
+description: canggu 중앙 hub (aggregator + API + 자동조정 엔진)
+type: application
+version: 0.0.1
+appVersion: "0.0.1"
