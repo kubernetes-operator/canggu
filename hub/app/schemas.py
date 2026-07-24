@@ -97,6 +97,14 @@ class VeleroRestore(BaseModel):
     warnings: int = 0
 
 
+class VeleroSchedule(BaseModel):
+    name: str
+    cron: str = ""
+    included_namespaces: list[str] = Field(default_factory=list)
+    paused: bool = False
+    last_backup: str = ""
+
+
 class TelemetrySnapshot(BaseModel):
     cluster_id: str
     generation: int = 0
@@ -110,6 +118,7 @@ class TelemetrySnapshot(BaseModel):
     routes: list[RouteEdge] = Field(default_factory=list)
     velero_backups: list[VeleroBackup] = Field(default_factory=list)
     velero_restores: list[VeleroRestore] = Field(default_factory=list)
+    velero_schedules: list[VeleroSchedule] = Field(default_factory=list)
 
 
 class Hello(BaseModel):

@@ -27,6 +27,11 @@ class RestoreBody(BaseModel):
     backup_name: str
 
 
+class ScheduleBody(BaseModel):
+    namespace: str
+    cron: str
+
+
 def _snapshot(cluster_id: str):
     snap = hub.snapshots.get(cluster_id)
     if snap is None:
@@ -40,13 +45,16 @@ async def velero_state(cluster_id: str, p: auth.Principal = Depends(auth.require
     allowed = scope.resolve_scope(p, cluster_id)
     backups = snap.velero_backups
     restores = snap.velero_restores
-    if allowed:  # 네임스페이스 스코프 → 해당 NS 포함 백업만
+    schedules = snap.velero_schedules
+    if allowed:  # 네임스페이스 스코프 → 해당 NS 포함 백업/스케줄만
         backups = [b for b in backups if allowed in b.included_namespaces]
+        schedules = [s for s in schedules if allowed in s.included_namespaces]
         restores = []  # 복구는 클러스터 범위 정보 — NS 스코프엔 숨김
     return {
         "installed": snap.velero_installed,
         "backups": [b.model_dump() for b in backups],
         "restores": [r.model_dump() for r in restores],
+        "schedules": [s.model_dump() for s in schedules],
     }
 
 
@@ -102,3 +110,37 @@ async def create_restore(
     await hub.broadcast_event({"kind": "velero_restore", "cluster_id": cluster_id,
                                "backup": body.backup_name, "name": created, "by": p.username})
     return {"ok": True, "restore": created, "backup_name": body.backup_name}
+
+
+@router.post("/{cluster_id}/velero/schedule")
+async def create_schedule(
+    cluster_id: str, body: ScheduleBody, p: auth.Principal = Depends(auth.require_admin)
+) -> dict:
+    scope.effective_namespace(p, cluster_id, body.namespace)
+    name = f"{body.namespace}-sched-{uuid.uuid4().hex[:6]}"
+    seq = hub._seq.get(cluster_id, 0) + 1
+    hub._seq[cluster_id] = seq
+    cmd = Command(
+        command_id=str(uuid.uuid4()), command_seq=seq, cluster_id=cluster_id,
+        namespace=body.namespace, target_kind="Schedule", target_name=name,
+        type="velero-schedule-create", patch={"name": name, "cron": body.cron},
+        issued_by=p.username,
+    )
+    created = await _dispatch(cluster_id, cmd, "velero-schedule-create", p.username)
+    return {"ok": True, "schedule": created, "namespace": body.namespace, "cron": body.cron}
+
+
+@router.delete("/{cluster_id}/velero/schedule/{name}")
+async def delete_schedule(
+    cluster_id: str, name: str, p: auth.Principal = Depends(auth.require_admin)
+) -> dict:
+    scope.resolve_scope(p, cluster_id)
+    seq = hub._seq.get(cluster_id, 0) + 1
+    hub._seq[cluster_id] = seq
+    cmd = Command(
+        command_id=str(uuid.uuid4()), command_seq=seq, cluster_id=cluster_id,
+        namespace="velero", target_kind="Schedule", target_name=name,
+        type="velero-schedule-delete", patch={"name": name}, issued_by=p.username,
+    )
+    await _dispatch(cluster_id, cmd, "velero-schedule-delete", p.username)
+    return {"ok": True, "deleted": name}

@@ -82,6 +82,10 @@ def _mock_snapshot(cluster_id: str, generation: int) -> dict:
              "errors": 0, "warnings": 0},
         ],
         "velero_restores": [],
+        "velero_schedules": [
+            {"name": "team-a-daily", "cron": "0 2 * * *", "included_namespaces": ["team-a"],
+             "paused": False, "last_backup": "2026-07-24T02:00:00Z"},
+        ],
         "pods": [
             {"namespace": "team-a", "name": "api-1", "node": "node-1", "phase": "Running",
              "restart_count": 0, "owner_kind": "Deployment", "owner_name": "api"},
@@ -220,7 +224,7 @@ class KubeClient:
         # 5) 스토리지 링크(SC↔PV↔PVC↔워크로드) + 6) Gateway HTTPRoute 흐름 + 7) Velero
         storage = self._collect_storage(pvc_users)
         routes = self._collect_routes()
-        velero_installed, velero_backups, velero_restores = self._collect_velero()
+        velero_installed, velero_backups, velero_restores, velero_schedules = self._collect_velero()
 
         return {
             "cluster_id": cluster_id,
@@ -234,6 +238,7 @@ class KubeClient:
             "velero_installed": velero_installed,
             "velero_backups": velero_backups,
             "velero_restores": velero_restores,
+            "velero_schedules": velero_schedules,
         }
 
     def _collect_storage(self, pvc_users: dict) -> list[dict]:
@@ -255,13 +260,13 @@ class KubeClient:
             })
         return out
 
-    def _collect_velero(self) -> tuple[bool, list[dict], list[dict]]:
-        """Velero 백업/복구 수집. 미설치면 (False, [], [])."""
+    def _collect_velero(self) -> tuple[bool, list[dict], list[dict], list[dict]]:
+        """Velero 백업/복구/스케줄 수집. 미설치면 (False, [], [], [])."""
         vns = get_settings().velero_namespace
         try:
             bk = self._custom.list_namespaced_custom_object("velero.io", "v1", vns, "backups")
         except Exception:  # noqa: BLE001 — CRD 미설치/네임스페이스 없음
-            return (False, [], [])
+            return (False, [], [], [])
         backups = []
         for it in bk.get("items", []):
             st = it.get("status", {}) or {}
@@ -289,7 +294,43 @@ class KubeClient:
                 })
         except Exception:  # noqa: BLE001
             pass
-        return (True, backups, restores)
+        schedules = []
+        try:
+            sc = self._custom.list_namespaced_custom_object("velero.io", "v1", vns, "schedules")
+            for it in sc.get("items", []):
+                spec = it.get("spec", {}) or {}
+                st = it.get("status", {}) or {}
+                tmpl = spec.get("template", {}) or {}
+                schedules.append({
+                    "name": it["metadata"]["name"],
+                    "cron": spec.get("schedule", ""),
+                    "included_namespaces": tmpl.get("includedNamespaces", []) or [],
+                    "paused": bool(spec.get("paused", False)),
+                    "last_backup": st.get("lastBackup", "") or "",
+                })
+        except Exception:  # noqa: BLE001
+            pass
+        return (True, backups, restores, schedules)
+
+    def create_velero_schedule(self, namespace: str, name: str, cron: str) -> str:
+        vns = get_settings().velero_namespace
+        if self.mock:
+            return name
+        body = {
+            "apiVersion": "velero.io/v1", "kind": "Schedule",
+            "metadata": {"name": name, "namespace": vns},
+            "spec": {"schedule": cron,
+                     "template": {"includedNamespaces": [namespace], "storageLocation": "default"}},
+        }
+        self._custom.create_namespaced_custom_object("velero.io", "v1", vns, "schedules", body)
+        return name
+
+    def delete_velero_schedule(self, name: str) -> str:
+        vns = get_settings().velero_namespace
+        if self.mock:
+            return name
+        self._custom.delete_namespaced_custom_object("velero.io", "v1", vns, "schedules", name)
+        return name
 
     def create_velero_backup(self, namespace: str, name: str) -> str:
         """네임스페이스 백업 생성(Backup CR). 반환: 생성된 이름."""

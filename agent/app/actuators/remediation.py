@@ -62,8 +62,9 @@ class Actuator:
         if cmd.get("type") == "inject-spread":
             return self._inject_spread(cmd)
 
-        # ── Velero 백업/복구(기능10) ──
-        if cmd.get("type") in ("velero-backup", "velero-restore"):
+        # ── Velero 백업/복구/스케줄(기능10) ──
+        if cmd.get("type") in ("velero-backup", "velero-restore",
+                               "velero-schedule-create", "velero-schedule-delete"):
             return self._velero(cmd)
 
         namespace = cmd.get("namespace", "")
@@ -118,12 +119,23 @@ class Actuator:
                     return self._result(cmd, "SKIPPED_SCOPE", error="namespace/name 누락")
                 created = self.kube.create_velero_backup(ns, name)
                 log.info("velero backup 생성: %s (ns=%s)", created, ns)
-            else:  # velero-restore
+            elif cmd.get("type") == "velero-restore":
                 backup = params.get("backup_name", "")
                 if not backup or not name:
                     return self._result(cmd, "SKIPPED_SCOPE", error="backup_name/name 누락")
                 created = self.kube.create_velero_restore(backup, name)
                 log.info("velero restore 생성: %s (from %s)", created, backup)
+            elif cmd.get("type") == "velero-schedule-create":
+                ns, cron = cmd.get("namespace", ""), params.get("cron", "")
+                if not ns or not name or not cron:
+                    return self._result(cmd, "SKIPPED_SCOPE", error="namespace/name/cron 누락")
+                created = self.kube.create_velero_schedule(ns, name, cron)
+                log.info("velero schedule 생성: %s (ns=%s cron=%s)", created, ns, cron)
+            else:  # velero-schedule-delete
+                if not name:
+                    return self._result(cmd, "SKIPPED_SCOPE", error="name 누락")
+                created = self.kube.delete_velero_schedule(name)
+                log.info("velero schedule 삭제: %s", created)
         except Exception as e:  # noqa: BLE001
             log.exception("velero 작업 실패")
             return self._result(cmd, "FAILED", error=str(e))

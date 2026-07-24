@@ -84,6 +84,18 @@ def test_velero_backup_and_restore():
     assert r["phase"] == "APPLIED" and r["payload"] == "restore-x"
 
 
+def test_velero_schedule_create_delete():
+    a = _actuator()
+    c = a.handle(_cmd(command_id="vs1", type="velero-schedule-create", target_kind="Schedule",
+                      target_name="team-a-sched", namespace="team-a",
+                      patch={"name": "team-a-sched", "cron": "0 2 * * *"}))
+    assert c["phase"] == "APPLIED" and c["payload"] == "team-a-sched"
+    d = a.handle(_cmd(command_id="vs2", type="velero-schedule-delete", target_kind="Schedule",
+                      target_name="team-a-sched", namespace="velero",
+                      patch={"name": "team-a-sched"}))
+    assert d["phase"] == "APPLIED"
+
+
 def test_issue_kubeconfig_returns_payload():
     res = _actuator().handle(_cmd(
         command_id="kc1", type="issue-kubeconfig", target_kind="ServiceAccount",

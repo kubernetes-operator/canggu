@@ -223,9 +223,16 @@ export const api = {
     installed: boolean;
     backups: { name: string; phase: string; included_namespaces: string[]; created: string; completed: string; errors: number; warnings: number }[];
     restores: { name: string; backup_name: string; phase: string; created: string; errors: number; warnings: number }[];
+    schedules: { name: string; cron: string; included_namespaces: string[]; paused: boolean; last_backup: string }[];
   }>,
   veleroBackup: (c: string, namespace: string) =>
     post(`api/clusters/${c}/velero/backup`, { namespace }) as Promise<{ backup: string }>,
   veleroRestore: (c: string, backup_name: string) =>
     post(`api/clusters/${c}/velero/restore`, { backup_name }) as Promise<{ restore: string }>,
+  veleroSchedule: (c: string, namespace: string, cron: string) =>
+    post(`api/clusters/${c}/velero/schedule`, { namespace, cron }) as Promise<{ schedule: string }>,
+  veleroScheduleDelete: (c: string, name: string) =>
+    fetch(P(`api/clusters/${c}/velero/schedule/${encodeURIComponent(name)}`), {
+      method: "DELETE", headers: authHeaders(),
+    }).then(j),
 };

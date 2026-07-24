@@ -706,6 +706,7 @@ function VeleroPanel(
 ) {
   const [state, setState] = useState<Awaited<ReturnType<typeof api.velero>> | null>(null);
   const [ns, setNs] = useState("");
+  const [cron, setCron] = useState("0 2 * * *");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => { api.velero(cluster).then(setState).catch(() => setState(null)); }, [cluster]);
@@ -727,6 +728,17 @@ function VeleroPanel(
     setBusy(true);
     try { await api.veleroRestore(cluster, name); load(); }
     catch (e) { alert("복구 실패: " + e); } finally { setBusy(false); }
+  }
+  async function schedule() {
+    setBusy(true);
+    try { await api.veleroSchedule(cluster, ns, cron); load(); }
+    catch (e) { alert("스케줄 생성 실패: " + e); } finally { setBusy(false); }
+  }
+  async function delSchedule(name: string) {
+    if (!window.confirm(`스케줄 '${name}' 삭제?`)) return;
+    setBusy(true);
+    try { await api.veleroScheduleDelete(cluster, name); load(); }
+    catch (e) { alert("삭제 실패: " + e); } finally { setBusy(false); }
   }
 
   const phaseIcon = (p: string) =>
@@ -758,6 +770,34 @@ function VeleroPanel(
               <td>{b.errors > 0 ? `❌${b.errors}` : "0"}/{b.warnings}</td>
               {isAdmin && <td><button disabled={busy || b.phase !== "Completed"}
                 onClick={() => restore(b.name)}>복구</button></td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <h3 style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0 4px" }}>
+        정기 백업 스케줄 ({state.schedules?.length ?? 0})
+      </h3>
+      {isAdmin && (
+        <div className="access-form">
+          <label>Namespace
+            <select value={ns} onChange={(e) => setNs(e.target.value)}>
+              {namespaces.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <label>Cron<input value={cron} placeholder="0 2 * * *" onChange={(e) => setCron(e.target.value)} /></label>
+          <button className="primary" disabled={busy} onClick={schedule}>스케줄 생성</button>
+        </div>
+      )}
+      <table>
+        <thead><tr><th>이름</th><th>Cron</th><th>대상 NS</th><th>일시중지</th><th>마지막</th>{isAdmin && <th></th>}</tr></thead>
+        <tbody>
+          {(state.schedules ?? []).map((s) => (
+            <tr key={s.name}>
+              <td className="mono">{s.name}</td><td className="mono">{s.cron}</td>
+              <td>{s.included_namespaces.join(", ")}</td>
+              <td>{s.paused ? "⏸" : "▶"}</td>
+              <td className="mono">{s.last_backup?.slice(0, 19).replace("T", " ")}</td>
+              {isAdmin && <td><button disabled={busy} onClick={() => delSchedule(s.name)}>삭제</button></td>}
             </tr>
           ))}
         </tbody>
