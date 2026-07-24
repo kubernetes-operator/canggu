@@ -22,6 +22,14 @@ from app.kube import KubeClient
 log = logging.getLogger("canggu.agent.stream")
 
 
+def _touch(path: str) -> None:
+    try:
+        with open(path, "w") as f:
+            f.write("ok")
+    except OSError:
+        pass
+
+
 class HubLink:
     def __init__(self, kube: KubeClient, actuator: Actuator) -> None:
         self.kube = kube
@@ -67,6 +75,7 @@ class HubLink:
             snap["metrics_available"] = self.kube.metrics_available
             snap["type"] = "telemetry"
             await ws.send(json.dumps(snap))
+            _touch(s.heartbeat_file)  # liveness 하트비트
             log.debug("telemetry 전송 gen=%s pods=%s", self._generation, len(snap.get("pods", [])))
             await asyncio.sleep(s.telemetry_interval_seconds)
 

@@ -17,7 +17,7 @@ spec:
       serviceAccountName: canggu-agent
       containers:
         - name: agent
-          image: registry.local.cloud:5000/canggu/agent:0.1.10
+          image: registry.local.cloud:5000/canggu/agent:0.1.11
           imagePullPolicy: IfNotPresent
           env:
             - name: CANGGU_MOCK
@@ -33,6 +33,19 @@ spec:
             - name: CANGGU_CLUSTER_TOKEN
               valueFrom:
                 secretKeyRef: { name: canggu-secrets, key: agentToken }
+          # 하트비트 파일이 90s 이상 오래되면(텔레메트리 정지=wedged) 재시작.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import os,time,sys
+                  p="/tmp/canggu-agent-alive"
+                  sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p) < 90 else 1)
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 256Mi }

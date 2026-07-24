@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     prometheus_cache_seconds: float = 60.0
 
     telemetry_interval_seconds: float = 10.0
+    heartbeat_file: str = "/tmp/canggu-agent-alive"  # liveness probe 용 (전송마다 갱신)
     reconnect_min_seconds: float = 1.0
     reconnect_max_seconds: float = 30.0
 
