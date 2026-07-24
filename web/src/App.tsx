@@ -196,8 +196,10 @@ export default function App() {
             {!cluster.connected && " · agent 미접속"}
           </span>
         )}
+        <button title="지금 새로고침" onClick={() => { refreshClusters(); refreshData(); }}>
+          🔄 새로고침
+        </button>
         <label className="stat">
-          🔄
           <select value={refreshMs} onChange={(e) => changeRefresh(Number(e.target.value))}>
             <option value={10000}>10초</option>
             <option value={30000}>30초</option>
