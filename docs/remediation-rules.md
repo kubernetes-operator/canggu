@@ -14,7 +14,7 @@ observe-only 에서는 탐지·제안까지만. high-risk 는 active 에서도 �
 | 7 | `svc-no-endpoints` | ready endpoint 0 while desired ≥1 | 알림 + 실패 Pod 상관 (진단, 자동변경 없음) | info | ❌ |
 | 8 | `image-pull-backoff` | waiting.reason=ImagePullBackOff | 표면화(태그/레지스트리 인증) | warn | ❌ |
 
-**Phase 0 구현**: 규칙 #3 (`resource-rightsize`) — 메트릭 없이도 "limit 미설정" 케이스로 동작 확인 가능.
+**구현 완료**: 규칙 7종 모두 동작(#1 oom-killed, #2 cpu-throttling, #3 resource-rightsize, #4 crashloop(진단), #5 pod-spread, #6 unschedulable(진단), #8 image-pull-backoff(진단)). 규칙별 활성/auto_apply 는 웹에서 런타임 설정(`/api/rules`). 동일 이슈(fingerprint)는 쿨다운(기본 300s) 동안 자동 재적용 억제(안티플래핑). 메트릭 소스는 Prometheus p95(폴백 metrics-server); 메트릭 없으면 리소스 규칙은 fail-safe 로 미동작.
 
 ## 규칙 #3 상세 (핵심 "성능 부족" 자동 수정)
 

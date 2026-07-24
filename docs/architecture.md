@@ -48,16 +48,19 @@ hub-spoke 멀티클러스터. 각 클러스터의 **agent**가 hub로 **outbound
 `suggested_actions` · `commands`(=remediation_audit) · `mode_events` · `kubeconfig_grants` · `velero_operations`.
 텔레메트리 스냅샷(인벤토리/메트릭/그래프)은 Redis/단기 캐시(영속 X). Phase 0 는 인메모리 캐시.
 
-## 마일스톤 로드맵
+## 마일스톤 로드맵 (전체 완료)
 
-| Phase | 내용 | 기능 |
-|-------|------|------|
-| **0** | 스캐폴드 + 수직 슬라이스 (agent↔hub, 인벤토리, Pod 목록, 규칙3 E2E) | 3·4 기반 |
-| **1** | 관측 코어: 메트릭, 재기동 Pod, SVC 헬스, 라이브 피드 | 2·5·6 |
-| **2** | Remediation 엔진 + 모드 토글 + 수동편집 + 감사 UI | 규칙1–4, a·b·c |
-| **3** | 웹 RBAC 2단계 + OIDC/JWT + NS별 SA/kubeconfig 발급 | d·9 |
-| **4** | 스토리지 토폴로지 + HTTPRoute 흐름도 + anti-affinity 분산 강제 | 7·1·8 |
-| **5** | Velero 백업/복구 시각화·실행 | 10 |
+| Phase | 내용 | 기능 | 상태 |
+|-------|------|------|------|
+| **0** | 스캐폴드 + 수직 슬라이스 (agent↔hub, 인벤토리, Pod 목록, 규칙3 E2E) | 3·4 기반 | ✅ |
+| **1** | 관측 코어: 메트릭, 재기동 Pod, SVC 헬스, 라이브 피드 | 2·5·6 | ✅ |
+| **2** | Remediation 엔진 + 모드 토글 + 수동편집 + 감사 | 규칙1–4, a·b·c | ✅ |
+| **3** | 웹 RBAC 2단계 + JWT 인증 + NS별 SA/kubeconfig 발급 | d·9 | ✅ |
+| **4** | 스토리지 토폴로지 + HTTPRoute 흐름도 + 노드 분산 강제 | 7·1·8 | ✅ |
+| **5** | Velero 백업/복구/스케줄 시각화·실행 | 10 | ✅ |
+| **하드닝** | 인증(REST+WS)·per-ns 스코프·규칙 설정·쿨다운·Prometheus p95·사용자관리 | — | ✅ |
+
+> 선택 미구현: OIDC(현재 로컬 JWT), React Flow 그래프(현재 CSS 흐름), 멀티클러스터 2번째 등록, remediation quota clamp.
 
 ## 주요 리스크 & 완화
 
