@@ -12,6 +12,7 @@ from app.db.models import (
     KubeconfigGrant,
     ModeEvent,
     NamespaceMode,
+    RuleConfig,
     User,
 )
 from app.db.session import SessionLocal
@@ -141,6 +142,35 @@ def set_frozen(cluster_id: str, frozen: bool) -> None:
         if c is not None:
             c.remediation_frozen = frozen
             db.commit()
+
+
+def seed_rule_configs(catalog: list[dict]) -> None:
+    with SessionLocal() as db:
+        for r in catalog:
+            if db.get(RuleConfig, r["id"]) is None:
+                db.add(RuleConfig(rule_id=r["id"], enabled=True, auto_apply="default"))
+        db.commit()
+
+
+def get_rule_configs() -> dict[str, dict]:
+    with SessionLocal() as db:
+        return {
+            r.rule_id: {"enabled": r.enabled, "auto_apply": r.auto_apply}
+            for r in db.scalars(select(RuleConfig))
+        }
+
+
+def set_rule_config(rule_id: str, enabled: bool | None, auto_apply: str | None) -> None:
+    with SessionLocal() as db:
+        r = db.get(RuleConfig, rule_id)
+        if r is None:
+            r = RuleConfig(rule_id=rule_id)
+            db.add(r)
+        if enabled is not None:
+            r.enabled = enabled
+        if auto_apply is not None:
+            r.auto_apply = auto_apply
+        db.commit()
 
 
 def record_command(cmd: Command, rule_id: str, risk_tier: str, mode_at_issue: str) -> None:

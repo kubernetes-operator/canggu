@@ -59,6 +59,7 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
 .warn-row td { background: rgba(241, 196, 15, 0.06); }
+.dim-row td { opacity: 0.45; }
 
 .issue { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
 .issue.sev-critical { border-left: 3px solid var(--crit); }

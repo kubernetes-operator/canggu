@@ -84,6 +84,16 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class RuleConfig(Base):
+    """자동조정 규칙 런타임 설정. enabled=이슈 생성 여부, auto_apply=자동 적용 오버라이드."""
+
+    __tablename__ = "rule_configs"
+
+    rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    auto_apply: Mapped[str] = mapped_column(String(8), default="default")  # default|on|off
+
+
 class KubeconfigGrant(Base):
     """kubeconfig 발급 감사(메타데이터만 — 토큰은 저장하지 않음)."""
 

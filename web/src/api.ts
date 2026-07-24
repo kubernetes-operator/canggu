@@ -164,6 +164,15 @@ export const api = {
   login: (username: string, password: string) =>
     post("api/auth/login", { username, password }) as Promise<{ token: string; user: Me }>,
   me: () => get("api/auth/me") as Promise<Me>,
+  rules: () => get("api/rules") as Promise<
+    { id: string; title: string; risk: string; default_auto: boolean; enabled: boolean; auto_apply: string }[]
+  >,
+  patchRule: (id: string, body: { enabled?: boolean; auto_apply?: string }) =>
+    fetch(P(`api/rules/${id}`), {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(j),
   listUsers: () => get("api/auth/users") as Promise<Me[]>,
   createUser: (u: { username: string; password: string; role: string; scope_type: string; scope_ref: string }) =>
     post("api/auth/users", u),

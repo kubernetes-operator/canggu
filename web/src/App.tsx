@@ -429,6 +429,7 @@ export default function App() {
 
         <AccessPanel cluster={selected} namespaces={namespaces} isAdmin={!!isAdmin} />
         <VeleroPanel cluster={selected} namespaces={namespaces} isAdmin={!!isAdmin} />
+        <RulesPanel isAdmin={!!isAdmin} />
         <UsersPanel isAdmin={!!isAdmin} clusterId={selected} />
       </div>
 
@@ -584,6 +585,47 @@ function AccessPanel(
           ))}
         </tbody>
       </table>
+    </Panel>
+  );
+}
+
+function RulesPanel({ isAdmin }: { isAdmin: boolean }) {
+  const [rules, setRules] = useState<Awaited<ReturnType<typeof api.rules>>>([]);
+  const load = useCallback(() => { api.rules().then(setRules).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function patch(id: string, body: { enabled?: boolean; auto_apply?: string }) {
+    try { await api.patchRule(id, body); load(); } catch (e) { alert("변경 실패: " + e); }
+  }
+
+  return (
+    <Panel title="자동조정 규칙 설정" wide>
+      <table>
+        <thead>
+          <tr><th>규칙</th><th>Risk</th><th>활성</th><th>자동 적용(auto-apply)</th></tr>
+        </thead>
+        <tbody>
+          {rules.map((r) => (
+            <tr key={r.id} className={!r.enabled ? "dim-row" : ""}>
+              <td>{r.title} <span className="mono" style={{ color: "var(--muted)" }}>({r.id})</span></td>
+              <td>{r.risk}</td>
+              <td>
+                <input type="checkbox" checked={r.enabled} disabled={!isAdmin}
+                  onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
+              </td>
+              <td>
+                <select value={r.auto_apply} disabled={!isAdmin}
+                  onChange={(e) => patch(r.id, { auto_apply: e.target.value })}>
+                  <option value="default">기본({r.default_auto ? "자동" : "수동"})</option>
+                  <option value="on">항상 자동</option>
+                  <option value="off">항상 수동</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="stat">※ 활성 규칙만 이슈를 생성하고, auto-apply + ACTIVE 모드일 때만 실제 변경됩니다.</div>
     </Panel>
   );
 }

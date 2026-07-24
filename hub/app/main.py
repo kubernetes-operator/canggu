@@ -22,6 +22,7 @@ from app.api import (
     live,
     manual,
     resources,
+    rules,
     velero,
 )
 from app.config import get_settings
@@ -46,8 +47,11 @@ def _seed_admin() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.remediation.rules import RULE_CATALOG
+
     init_db()
     _seed_admin()
+    crud.seed_rule_configs(RULE_CATALOG)
     logging.getLogger("canggu").info("hub 시작 — DB 초기화 완료 (auth=%s)",
                                      get_settings().auth_enabled)
     yield
@@ -72,6 +76,7 @@ app.include_router(issues.router)
 app.include_router(manual.router)
 app.include_router(kubeconfig.router)
 app.include_router(velero.router)
+app.include_router(rules.router)
 app.include_router(commands.router, dependencies=[Depends(auth.require_user)])
 # WebSocket
 app.include_router(agent_ws.router)

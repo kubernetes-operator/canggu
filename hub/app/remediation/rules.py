@@ -17,6 +17,15 @@ from app.remediation.quantity import (
 )
 from app.schemas import Issue, Pod, SuggestedAction, Workload
 
+# 구현된 규칙 카탈로그(웹 규칙 설정 UI + 기본값 시딩용).
+RULE_CATALOG = [
+    {"id": "resource-rightsize", "title": "리소스 requests 우측정렬", "risk": "low", "default_auto": True},
+    {"id": "cpu-throttling", "title": "CPU limit 근접(throttling 의심)", "risk": "med", "default_auto": True},
+    {"id": "oom-killed", "title": "OOMKilled → 메모리 limit 증가", "risk": "med", "default_auto": True},
+    {"id": "crashloop", "title": "CrashLoopBackOff(진단 전용)", "risk": "high", "default_auto": False},
+    {"id": "pod-spread", "title": "노드 분산 강제(topologySpread)", "risk": "med", "default_auto": True},
+]
+
 HEADROOM = 1.2       # 우측정렬 시 p95 위에 얹는 여유
 OOM_BUMP = 1.5       # OOM 시 메모리 limit 증가 배수
 CPU_LIMIT_BUMP = 1.5  # CPU limit 근접 시 증가 배수

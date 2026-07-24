@@ -129,6 +129,22 @@ def test_pod_spread_skipped_single_replica():
     assert _by_rule(engine.evaluate(snap, 1.5), "pod-spread") is None
 
 
+def test_apply_rule_config_disable_drops_issue():
+    issues = engine.evaluate(_snap_with_underprovisioned(), 1.5)
+    cfg = {"resource-rightsize": {"enabled": False, "auto_apply": "default"}}
+    out = engine.apply_rule_config(issues, cfg)
+    assert _by_rule(out, "resource-rightsize") is None
+    assert _by_rule(out, "pod-spread") is not None  # 다른 규칙은 유지
+
+
+def test_apply_rule_config_auto_apply_override():
+    issues = engine.evaluate(_snap_with_underprovisioned(), 1.5)
+    cfg = {"pod-spread": {"enabled": True, "auto_apply": "off"}}
+    out = engine.apply_rule_config(issues, cfg)
+    sp = _by_rule(out, "pod-spread")
+    assert sp is not None and sp.suggested_action.auto_apply is False
+
+
 def test_effective_mode():
     assert engine.effective_mode("ACTIVE", None) == "ACTIVE"
     assert engine.effective_mode("ACTIVE", "OBSERVE") == "OBSERVE"  # observe 우선

@@ -79,6 +79,9 @@ class Hub:
 
         issues = engine.evaluate(snapshot, s.rightsize_factor)
 
+        rule_cfg = await run_in_threadpool(crud.get_rule_configs)
+        issues = engine.apply_rule_config(issues, rule_cfg)
+
         cluster_mode, frozen = await run_in_threadpool(
             crud.cluster_mode_and_frozen, snapshot.cluster_id
         )

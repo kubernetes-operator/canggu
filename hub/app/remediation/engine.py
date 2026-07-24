@@ -47,6 +47,20 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
     return issues
 
 
+def apply_rule_config(issues: list[Issue], config: dict[str, dict]) -> list[Issue]:
+    """런타임 규칙 설정 적용: 비활성 규칙 이슈 제거 + auto_apply 오버라이드."""
+    out: list[Issue] = []
+    for i in issues:
+        cfg = config.get(i.rule_id, {})
+        if cfg.get("enabled", True) is False:
+            continue
+        override = cfg.get("auto_apply", "default")
+        if i.suggested_action is not None and override in ("on", "off"):
+            i.suggested_action.auto_apply = override == "on"
+        out.append(i)
+    return out
+
+
 def plan_dispatch(
     issues: list[Issue],
     *,
