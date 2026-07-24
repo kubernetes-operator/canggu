@@ -6,6 +6,8 @@ export type Cluster = {
   cluster_mode: "OBSERVE" | "ACTIVE";
   remediation_frozen: boolean;
   connected: boolean;
+  stale: boolean;
+  data_age_seconds: number | null;
   agent_version: string;
   metrics_available: boolean;
   last_seen: string | null;

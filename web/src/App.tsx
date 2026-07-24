@@ -174,6 +174,12 @@ export default function App() {
         <h1>canggu</h1>
         <span className="sub">Kubernetes 자동 운영</span>
         <div className="spacer" />
+        {cluster?.stale && (
+          <span className="stale-badge">
+            ⚠ 데이터 오래됨{cluster.data_age_seconds != null ? ` (${cluster.data_age_seconds}s)` : ""}
+            {!cluster.connected && " · agent 미접속"}
+          </span>
+        )}
         <span className="stat">
           👤 {me.username} · {me.role}
           {me.role !== "admin" && " (읽기전용)"}

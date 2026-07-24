@@ -9,12 +9,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from datetime import datetime, timezone
+
 from fastapi import HTTPException
 
 from app.agentlink.manager import hub
 from app.core import auth, scope
 from app.db import crud
 from app.schemas import Mode
+
+STALE_AFTER_SECONDS = 45  # last_seen 이 이보다 오래되면 데이터 stale 로 표시
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
@@ -45,13 +49,24 @@ async def list_clusters(p: auth.Principal = Depends(auth.require_user)) -> list[
             svcs = [x for x in svcs if x.namespace == allowed_ns]
             issues = [x for x in issues if x.namespace == allowed_ns]
             nslist = [allowed_ns] if allowed_ns in nslist else []
+        connected = c.id in hub.agents
+        age = None
+        if c.last_seen is not None:
+            # SQLite 는 naive, Postgres 는 aware 를 반환 → 둘 다 UTC naive 로 정규화.
+            ls = c.last_seen
+            if ls.tzinfo is not None:
+                ls = ls.astimezone(timezone.utc).replace(tzinfo=None)
+            age = (datetime.utcnow() - ls).total_seconds()
+        stale = (not connected) or (age is None) or (age > STALE_AFTER_SECONDS)
         out.append(
             {
                 "id": c.id,
                 "name": c.name,
                 "cluster_mode": c.cluster_mode,
                 "remediation_frozen": c.remediation_frozen,
-                "connected": c.id in hub.agents,
+                "connected": connected,
+                "stale": stale,
+                "data_age_seconds": round(age) if age is not None else None,
                 "agent_version": c.agent_version,
                 "metrics_available": c.metrics_available,
                 "last_seen": c.last_seen.isoformat() if c.last_seen else None,
