@@ -88,6 +88,8 @@ th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background
 .issue-detail { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .issue-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #22304a; color: #bcd3f0; }
+.badge.warn { background: #3a2c10; color: var(--warn); }
+.ev-msg { max-width: 480px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .disp { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #22304a; color: var(--muted); }
 .disp.auto_dispatched, .disp.applied { background: #14361f; color: var(--ok); }
 .disp.manual_required { background: #3a2c10; color: var(--warn); }

@@ -74,6 +74,18 @@ async def routes(
     return [x.model_dump() for x in _match(_snapshot(cluster_id).routes, ns)]
 
 
+@router.get("/{cluster_id}/events")
+async def events(
+    cluster_id: str, namespace: str | None = Query(None),
+    reason: str | None = Query(None), p: Principal = Depends(require_user),
+) -> list[dict]:
+    ns = scope.effective_namespace(p, cluster_id, namespace)
+    items = _match(_snapshot(cluster_id).events, ns)
+    if reason:
+        items = [e for e in items if e.reason == reason]
+    return [e.model_dump() for e in items]
+
+
 @router.get("/{cluster_id}/summary")
 async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict:
     """클러스터 헬스 요약(스코프 적용). 심각도별 이슈·구성요소 이상·헬스 스코어."""
@@ -89,6 +101,7 @@ async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict
     svcs = scoped(snap.services)
     storage = scoped(snap.storage)
     workloads = scoped(snap.workloads)
+    warn_events = len(scoped(snap.events))
     issues = scoped(_hub.issues.get(cluster_id, []))
 
     by_sev = {"critical": 0, "warn": 0, "info": 0}
@@ -121,4 +134,5 @@ async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict
         "unhealthy_services": unhealthy_svc,
         "unbound_pvcs": unbound_pvc,
         "workloads_single_node": single_node,
+        "warning_events": warn_events,
     }

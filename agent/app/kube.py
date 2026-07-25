@@ -6,10 +6,12 @@ MOCK 모드는 클러스터/자격증명 없이 합성 인벤토리를 생성하
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from app.config import get_settings
 
 log = logging.getLogger("canggu.agent.kube")
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 # ── MOCK 인벤토리 ────────────────────────────────────────────────────────────
@@ -74,6 +76,14 @@ def _mock_snapshot(cluster_id: str, generation: int) -> dict:
             {"namespace": "team-b", "httproute": "worker-route", "gateway": "gateway",
              "hostname": "test2.studiobasa.com", "path": "/worker",
              "backend_service": "worker", "backend_port": 8080, "weight": 1},
+        ],
+        "events": [
+            {"namespace": "team-a", "type": "Warning", "reason": "BackOff",
+             "message": "Back-off restarting failed container api", "involved_kind": "Pod",
+             "involved_name": "api-2", "count": 12, "last_seen": "2026-07-25T00:00:00Z"},
+            {"namespace": "team-b", "type": "Warning", "reason": "FailedScheduling",
+             "message": "0/6 nodes are available: insufficient cpu", "involved_kind": "Pod",
+             "involved_name": "worker-3", "count": 4, "last_seen": "2026-07-25T00:01:00Z"},
         ],
         "velero_installed": True,
         "velero_backups": [
@@ -230,6 +240,7 @@ class KubeClient:
         # 5) 스토리지 링크(SC↔PV↔PVC↔워크로드) + 6) Gateway HTTPRoute 흐름 + 7) Velero
         storage = self._collect_storage(pvc_users)
         routes = self._collect_routes()
+        events = self._collect_events()
         velero_installed, velero_backups, velero_restores, velero_schedules = self._collect_velero()
 
         return {
@@ -241,6 +252,7 @@ class KubeClient:
             "services": services,
             "storage": storage,
             "routes": routes,
+            "events": events,
             "velero_installed": velero_installed,
             "velero_backups": velero_backups,
             "velero_restores": velero_restores,
@@ -362,6 +374,39 @@ class KubeClient:
         }
         self._custom.create_namespaced_custom_object("velero.io", "v1", vns, "restores", body)
         return name
+
+    def _collect_events(self, limit: int = 200) -> list[dict]:
+        """최근 Warning 이벤트 수집(운영/튜닝 판단용). 최신순 캡."""
+        core = self._core
+        items = core.list_event_for_all_namespaces().items
+        evs = []
+        for e in items:
+            if (e.type or "") != "Warning":
+                continue
+            io = e.involved_object
+            ts = e.last_timestamp or e.event_time or (e.metadata.creation_timestamp
+                                                       if e.metadata else None)
+            evs.append({
+                "namespace": e.metadata.namespace if e.metadata else "",
+                "type": e.type or "",
+                "reason": e.reason or "",
+                "message": (e.message or "")[:300],
+                "involved_kind": io.kind if io else "",
+                "involved_name": io.name if io else "",
+                "count": int(e.count or 1),
+                "_ts": ts,
+                "last_seen": ts.isoformat() if ts else "",
+            })
+        def _key(x):
+            ts = x["_ts"]
+            if ts is None:
+                return _EPOCH
+            return ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts
+
+        evs.sort(key=_key, reverse=True)
+        for e in evs:
+            e.pop("_ts", None)
+        return evs[:limit]
 
     def _collect_routes(self) -> list[dict]:
         """Gateway API HTTPRoute 흐름. CRD 미설치면 빈 리스트(fail-safe)."""

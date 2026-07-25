@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  api, BASE, clearToken, Cluster, Command, getToken, Issue, Me, Pod, RouteEdge, Service, setToken,
-  StorageLink, Workload,
+  api, BASE, clearToken, Cluster, Command, getToken, Issue, K8sEvent, Me, Pod, RouteEdge, Service,
+  setToken, StorageLink, Workload,
 } from "./api";
 
 type LiveEvent = Record<string, unknown> & { kind: string; ts?: string };
@@ -23,6 +23,7 @@ export default function App() {
   const [workloads, setWorkloads] = useState<Workload[]>([]);
   const [storage, setStorage] = useState<StorageLink[]>([]);
   const [routes, setRoutes] = useState<RouteEdge[]>([]);
+  const [k8sEvents, setK8sEvents] = useState<K8sEvent[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [commands, setCommands] = useState<Command[]>([]);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.summary>> | null>(null);
@@ -78,6 +79,7 @@ export default function App() {
         api.issues(selected, ns).catch(() => []),
         api.commands(selected).catch(() => []),
       ]);
+      api.events(selected, ns).then(setK8sEvents).catch(() => setK8sEvents([]));
       setNamespaces(nsList);
       setNsModes(nsm);
       setPods(p);
@@ -290,6 +292,7 @@ export default function App() {
           <div className="tile"><div className="tile-v">{summary.unhealthy_services}</div><div className="tile-l">비정상 SVC</div></div>
           <div className="tile"><div className="tile-v">{summary.unbound_pvcs}</div><div className="tile-l">미바인딩 PVC</div></div>
           <div className="tile"><div className="tile-v">{summary.workloads_single_node}</div><div className="tile-l">노드 미분산</div></div>
+          <div className="tile"><div className="tile-v warn">{summary.warning_events ?? 0}</div><div className="tile-l">경고 이벤트</div></div>
         </section>
       )}
 
@@ -449,6 +452,27 @@ export default function App() {
                   <td>{s.pvc}</td>
                   <td className="mono">{s.capacity || "-"}</td>
                   <td>{s.bound_workloads.join(", ") || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+
+        <Panel title={`Kubernetes 경고 이벤트 (${k8sEvents.length})`} wide>
+          {k8sEvents.length === 0 && <div className="empty">경고 이벤트 없음</div>}
+          <table>
+            <thead>
+              <tr><th>시각</th><th>Namespace</th><th>Reason</th><th>대상</th><th>횟수</th><th>메시지</th></tr>
+            </thead>
+            <tbody>
+              {k8sEvents.slice(0, 100).map((e, i) => (
+                <tr key={i} className={e.count >= 5 ? "warn-row" : ""}>
+                  <td className="mono">{e.last_seen?.slice(0, 19).replace("T", " ")}</td>
+                  <td>{e.namespace}</td>
+                  <td><span className="badge warn">{e.reason}</span></td>
+                  <td className="mono">{e.involved_kind}/{e.involved_name}</td>
+                  <td>{e.count > 1 ? `×${e.count}` : e.count}</td>
+                  <td className="mono ev-msg">{e.message}</td>
                 </tr>
               ))}
             </tbody>

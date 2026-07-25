@@ -55,6 +55,17 @@ export type StorageLink = {
   phase: string;
 };
 
+export type K8sEvent = {
+  namespace: string;
+  type: string;
+  reason: string;
+  message: string;
+  involved_kind: string;
+  involved_name: string;
+  count: number;
+  last_seen: string;
+};
+
 export type RouteEdge = {
   namespace: string;
   httproute: string;
@@ -201,6 +212,8 @@ export const api = {
     get(`api/clusters/${c}/storage?namespace=${encodeURIComponent(ns)}`) as Promise<StorageLink[]>,
   routes: (c: string, ns: string) =>
     get(`api/clusters/${c}/routes?namespace=${encodeURIComponent(ns)}`) as Promise<RouteEdge[]>,
+  events: (c: string, ns: string) =>
+    get(`api/clusters/${c}/events?namespace=${encodeURIComponent(ns)}`) as Promise<K8sEvent[]>,
   issues: (c: string, ns: string) =>
     get(`api/clusters/${c}/issues?namespace=${encodeURIComponent(ns)}`) as Promise<Issue[]>,
   commands: (c: string) => get(`api/commands?cluster_id=${c}`) as Promise<Command[]>,
@@ -209,7 +222,7 @@ export const api = {
     issues_by_severity: Record<string, number>; issues_by_rule: Record<string, number>;
     totals: Record<string, number>;
     restarting_pods: number; unhealthy_services: number; unbound_pvcs: number;
-    workloads_single_node: number;
+    workloads_single_node: number; warning_events: number;
   }>,
   namespaceModes: (c: string) =>
     get(`api/clusters/${c}/namespace-modes`) as Promise<Record<string, string>>,

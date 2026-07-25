@@ -17,7 +17,7 @@ spec:
       serviceAccountName: canggu-agent
       containers:
         - name: agent
-          image: registry.local.cloud:5000/canggu/agent:0.1.11
+          image: registry.local.cloud:5000/canggu/agent:0.1.12
           imagePullPolicy: IfNotPresent
           env:
             - name: CANGGU_MOCK

@@ -106,6 +106,17 @@ class VeleroSchedule(BaseModel):
     last_backup: str = ""
 
 
+class Event(BaseModel):
+    namespace: str
+    type: str = ""              # Warning | Normal
+    reason: str = ""
+    message: str = ""
+    involved_kind: str = ""
+    involved_name: str = ""
+    count: int = 1
+    last_seen: str = ""
+
+
 class TelemetrySnapshot(BaseModel):
     cluster_id: str
     generation: int = 0
@@ -117,6 +128,7 @@ class TelemetrySnapshot(BaseModel):
     services: list[Service] = Field(default_factory=list)
     storage: list[StorageLink] = Field(default_factory=list)
     routes: list[RouteEdge] = Field(default_factory=list)
+    events: list[Event] = Field(default_factory=list)
     velero_backups: list[VeleroBackup] = Field(default_factory=list)
     velero_restores: list[VeleroRestore] = Field(default_factory=list)
     velero_schedules: list[VeleroSchedule] = Field(default_factory=list)
