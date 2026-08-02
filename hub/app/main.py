@@ -34,15 +34,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 def _seed_admin() -> None:
-    """부트스트랩 admin 이 없으면 생성."""
+    """부트스트랩 admin 생성. CANGGU_ADMIN_RESET=true 면 기존 admin 비밀번호를 재동기화(복구)."""
     s = get_settings()
-    if crud.get_user(s.admin_user) is not None:
+    log = logging.getLogger("canggu")
+    existing = crud.get_user(s.admin_user)
+    if existing is None:
+        salt = auth.make_salt()
+        crud.create_user(
+            s.admin_user, auth.hash_password(s.admin_password, salt), salt, role="admin"
+        )
+        log.info("부트스트랩 admin 사용자 생성: %s", s.admin_user)
         return
-    salt = auth.make_salt()
-    crud.create_user(
-        s.admin_user, auth.hash_password(s.admin_password, salt), salt, role="admin"
-    )
-    logging.getLogger("canggu").info("부트스트랩 admin 사용자 생성: %s", s.admin_user)
+    if s.admin_reset:
+        salt = auth.make_salt()
+        crud.update_user(
+            s.admin_user, role="admin",
+            pw_hash=auth.hash_password(s.admin_password, salt), salt=salt,
+        )
+        log.warning(
+            "CANGGU_ADMIN_RESET=true → admin '%s' 비밀번호를 Secret 값으로 재설정함. "
+            "복구 후 CANGGU_ADMIN_RESET 을 false 로 되돌리세요.", s.admin_user,
+        )
 
 
 @asynccontextmanager

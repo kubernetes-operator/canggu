@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # 부트스트랩 admin. 최초 기동 시 DB 에 없으면 생성.
     admin_user: str = "admin"
     admin_password: str = "admin"  # 운영은 Secret 주입(랜덤). dev 기본값.
+    # 복구용: true 로 기동하면 admin 비밀번호를 admin_password(Secret) 값으로 재동기화.
+    # 사용 후 반드시 false 로 되돌릴 것(매 기동마다 재설정되어 사용자 변경이 덮어써짐).
+    admin_reset: bool = False
     # true 면 인증 미들웨어 활성(운영). dev 로컬은 false 로 열어둘 수 있음.
     auth_enabled: bool = True
 

@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: hub
-          image: registry.local.cloud:5000/canggu/hub:0.1.23
+          image: registry.local.cloud:5000/canggu/hub:0.1.24
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8000 }]
           env:
@@ -46,6 +46,9 @@ spec:
               value: "true"
             - name: CANGGU_ADMIN_USER
               value: admin
+            # 복구용: admin 비밀번호를 Secret 값으로 재동기화. 복구 후 "false" 로 되돌릴 것.
+            - name: CANGGU_ADMIN_RESET
+              value: "true"
             - name: CANGGU_JWT_SECRET
               valueFrom:
                 secretKeyRef: { name: canggu-secrets, key: jwtSecret }
