@@ -48,7 +48,7 @@ spec:
               value: admin
             # 복구용: admin 비밀번호를 Secret 값으로 재동기화. 복구 후 "false" 로 되돌릴 것.
             - name: CANGGU_ADMIN_RESET
-              value: "true"
+              value: "false"
             - name: CANGGU_JWT_SECRET
               valueFrom:
                 secretKeyRef: { name: canggu-secrets, key: jwtSecret }
