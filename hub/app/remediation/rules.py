@@ -15,7 +15,7 @@ from app.remediation.quantity import (
     parse_cpu,
     parse_mem,
 )
-from app.schemas import Issue, Pod, SuggestedAction, Workload
+from app.schemas import Event, Issue, Pod, SuggestedAction, Workload
 
 # 구현된 규칙 카탈로그(웹 규칙 설정 UI + 기본값 시딩용).
 RULE_CATALOG = [
@@ -26,7 +26,22 @@ RULE_CATALOG = [
     {"id": "pod-spread", "title": "노드 분산 강제(topologySpread)", "risk": "med", "default_auto": True},
     {"id": "unschedulable", "title": "스케줄 불가(리소스 부족 등, 진단)", "risk": "warn", "default_auto": False},
     {"id": "image-pull-backoff", "title": "ImagePullBackOff(이미지/인증, 진단)", "risk": "warn", "default_auto": False},
+    {"id": "event-failed-scheduling", "title": "스케줄 실패 이벤트(노드 리소스 튜닝)", "risk": "warn", "default_auto": False},
+    {"id": "event-probe-unhealthy", "title": "프로브 실패 이벤트(probe 튜닝)", "risk": "warn", "default_auto": False},
+    {"id": "event-volume-failed", "title": "볼륨 마운트 실패 이벤트(스토리지 튜닝)", "risk": "warn", "default_auto": False},
 ]
+
+# 이벤트 reason → 운영 튜닝 규칙(진단/제안). 자동 조치 없음.
+EVENT_RULES = {
+    "FailedScheduling": ("event-failed-scheduling", "스케줄 실패",
+                         "노드 리소스 부족 가능 — requests 축소 또는 노드 증설/테인트·셀렉터 검토"),
+    "Unhealthy": ("event-probe-unhealthy", "프로브 실패",
+                  "readiness/liveness 프로브 실패 — failureThreshold·initialDelaySeconds·timeoutSeconds 상향 검토"),
+    "FailedMount": ("event-volume-failed", "볼륨 마운트 실패",
+                    "PVC 바인딩/StorageClass/노드 접근 확인"),
+    "FailedAttachVolume": ("event-volume-failed", "볼륨 연결 실패",
+                           "PVC 바인딩/StorageClass/노드 접근 확인"),
+}
 
 HEADROOM = 1.2       # 우측정렬 시 p95 위에 얹는 여유
 OOM_BUMP = 1.5       # OOM 시 메모리 limit 증가 배수
@@ -293,3 +308,42 @@ def detect_image_pull_backoff(cluster_id: str, wl: Workload, pods: list[Pod]) ->
         evidence={"pods": [p.name for p in bad[:5]]},
         suggested_action=None,
     )
+
+
+def detect_events(
+    cluster_id: str, events: list[Event], pod_owner: dict[tuple[str, str], str]
+) -> list[Issue]:
+    """이벤트 reason 을 워크로드와 상관시켜 운영 튜닝 제안(진단) 생성.
+
+    pod_owner: (namespace, pod_name) -> "Kind/Name" 소유 워크로드. 없으면 이벤트 대상 그대로.
+    동일 (ns, rule, target) 이벤트는 하나의 이슈로 집계.
+    """
+    groups: dict[tuple[str, str, str], dict] = {}
+    for e in events:
+        spec = EVENT_RULES.get(e.reason)
+        if spec is None:
+            continue
+        rule_id, title, hint = spec
+        target = pod_owner.get((e.namespace, e.involved_name)) or \
+            f"{e.involved_kind}/{e.involved_name}"
+        key = (e.namespace, rule_id, target)
+        g = groups.setdefault(
+            key, {"count": 0, "objs": set(), "rule_id": rule_id, "title": title, "hint": hint}
+        )
+        g["count"] += e.count
+        g["objs"].add(e.involved_name)
+
+    issues: list[Issue] = []
+    for (ns, rule_id, target), g in groups.items():
+        issues.append(Issue(
+            fingerprint=_fingerprint(cluster_id, ns, rule_id, target),
+            rule_id=rule_id,
+            cluster_id=cluster_id,
+            namespace=ns,
+            severity="warn",
+            title=f"{target}: {g['title']} (×{g['count']})",
+            detail=f"{g['hint']} (대상 {len(g['objs'])}개)",
+            evidence={"objects": sorted(g["objs"])[:5], "count": g["count"]},
+            suggested_action=None,  # 튜닝 제안(진단) — 자동 조치 없음
+        ))
+    return issues

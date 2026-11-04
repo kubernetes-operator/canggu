@@ -29,9 +29,11 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
     """
     cid = snapshot.cluster_id
     pods_by_owner: dict[tuple[str, str], list] = {}
+    pod_owner: dict[tuple[str, str], str] = {}  # (ns, pod) -> "Kind/Name"
     for p in snapshot.pods:
         if p.owner_name:
             pods_by_owner.setdefault((p.namespace, p.owner_name), []).append(p)
+            pod_owner[(p.namespace, p.name)] = f"{p.owner_kind}/{p.owner_name}"
 
     issues: list[Issue] = []
     for wl in snapshot.workloads:
@@ -46,6 +48,9 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
             rules.detect_image_pull_backoff(cid, wl, pods),
         ]
         issues.extend(i for i in candidates if i is not None)
+
+    # 이벤트 기반 운영 튜닝 제안(워크로드 상관)
+    issues.extend(rules.detect_events(cid, snapshot.events, pod_owner))
     return issues
 
 

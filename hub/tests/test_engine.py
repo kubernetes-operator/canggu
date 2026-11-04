@@ -162,6 +162,34 @@ def test_unschedulable_and_imagepull_diagnostic():
     assert i is not None and i.suggested_action is None
 
 
+def test_event_based_tuning_suggestions():
+    from app.schemas import Event, Pod
+
+    snap = _snap_with_underprovisioned()
+    snap.pods = [
+        Pod(namespace="team-a", name="api-xyz", owner_kind="Deployment", owner_name="api"),
+    ]
+    snap.events = [
+        Event(namespace="team-a", type="Warning", reason="FailedScheduling",
+              involved_kind="Pod", involved_name="api-xyz", count=3),
+        Event(namespace="team-a", type="Warning", reason="Unhealthy",
+              involved_kind="Pod", involved_name="api-xyz", count=5),
+        Event(namespace="team-b", type="Warning", reason="FailedMount",
+              involved_kind="Pod", involved_name="worker-1", count=2),
+        Event(namespace="x", type="Warning", reason="DNSConfigForming",  # 무시 대상
+              involved_kind="Pod", involved_name="p", count=99),
+    ]
+    issues = engine.evaluate(snap, 1.5)
+    sched = _by_rule(issues, "event-failed-scheduling")
+    probe = _by_rule(issues, "event-probe-unhealthy")
+    vol = _by_rule(issues, "event-volume-failed")
+    assert sched is not None and "Deployment/api" in sched.title  # pod→워크로드 상관
+    assert probe is not None and probe.suggested_action is None    # 진단 전용
+    assert vol is not None
+    # DNSConfigForming 은 규칙 없음 → 이슈 없음
+    assert all("DNSConfigForming" not in i.rule_id for i in issues)
+
+
 def test_effective_mode():
     assert engine.effective_mode("ACTIVE", None) == "ACTIVE"
     assert engine.effective_mode("ACTIVE", "OBSERVE") == "OBSERVE"  # observe 우선
