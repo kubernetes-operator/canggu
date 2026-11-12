@@ -190,6 +190,7 @@ class Issue(BaseModel):
     rule_id: str
     cluster_id: str
     namespace: str
+    target: str = ""  # "Kind/Name" 대상 워크로드(Operating 뷰 상관용)
     severity: Literal["info", "warn", "critical"] = "info"
     title: str
     detail: str = ""

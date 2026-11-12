@@ -86,6 +86,17 @@ async def events(
     return [e.model_dump() for e in items]
 
 
+@router.get("/{cluster_id}/operating")
+async def operating(
+    cluster_id: str, namespace: str | None = Query(None), p: Principal = Depends(require_user)
+) -> dict:
+    """워크로드별 Pod 상태·사용량·경고 이벤트·이슈 통합 뷰(스코프 적용)."""
+    from app.core.operating import build_operating
+
+    ns = scope.effective_namespace(p, cluster_id, namespace)
+    return build_operating(_snapshot(cluster_id), hub.issues.get(cluster_id, []), ns)
+
+
 @router.get("/{cluster_id}/summary")
 async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict:
     """클러스터 헬스 요약(스코프 적용). 심각도별 이슈·구성요소 이상·헬스 스코어."""

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
-  api, BASE, clearToken, Cluster, Command, getToken, Issue, K8sEvent, Me, Pod, RouteEdge, Service,
+  api, BASE, clearToken, Cluster, Command, getToken, Issue, K8sEvent, Me, OpContainer, Operating,
+  OpWorkload, Pod, RouteEdge, Service,
   setToken, StorageLink, Workload,
 } from "./api";
 
@@ -25,6 +26,7 @@ export default function App() {
   const [routes, setRoutes] = useState<RouteEdge[]>([]);
   const [k8sEvents, setK8sEvents] = useState<K8sEvent[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [operating, setOperating] = useState<Operating | null>(null);
   const [commands, setCommands] = useState<Command[]>([]);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.summary>> | null>(null);
   const [events, setEvents] = useState<LiveEvent[]>([]);
@@ -80,6 +82,7 @@ export default function App() {
         api.commands(selected).catch(() => []),
       ]);
       api.events(selected, ns).then(setK8sEvents).catch(() => setK8sEvents([]));
+      api.operating(selected, ns).then(setOperating).catch(() => setOperating(null));
       setNamespaces(nsList);
       setNsModes(nsm);
       setPods(p);
@@ -297,6 +300,15 @@ export default function App() {
       )}
 
       <div className="grid">
+        <OperatingPanel
+          data={operating} isAdmin={!!isAdmin} onApply={apply}
+          onEdit={(w, c) => setEdit({
+            ns: w.namespace, kind: w.kind, name: w.name, container: c.name,
+            reqCpu: c.requests.cpu, reqMem: c.requests.memory,
+            limCpu: c.limits.cpu, limMem: c.limits.memory,
+          })}
+        />
+
         <Panel title={`이슈 & 해결 제안 (${issues.length})`}>
           {issues.length === 0 && <div className="empty">이슈 없음</div>}
           {issues.map((i) => (
@@ -933,6 +945,167 @@ function VeleroPanel(
         </>
       )}
     </Panel>
+  );
+}
+
+const STATUS_LABEL = { critical: "위험", warn: "주의", ok: "정상" } as const;
+
+function pct(r: number | null): string {
+  return r == null ? "-" : `${Math.round(r * 100)}%`;
+}
+
+function OperatingPanel({ data, isAdmin, onApply, onEdit }: {
+  data: Operating | null; isAdmin: boolean;
+  onApply: (fp: string, dry: boolean) => void;
+  onEdit: (w: OpWorkload, c: OpContainer) => void;
+}) {
+  const [filter, setFilter] = useState<"problem" | "critical" | "all">("problem");
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+
+  const rows = (data?.workloads ?? []).filter((w) =>
+    (filter === "all" || (filter === "critical" ? w.status === "critical" : w.status !== "ok"))
+    && (!q || `${w.namespace}/${w.kind}/${w.name}`.toLowerCase().includes(q.toLowerCase())),
+  );
+  const c = data?.counts ?? { ok: 0, warn: 0, critical: 0 };
+
+  return (
+    <section className="panel wide operating">
+      <h2>Operating · 워크로드 통합 상태</h2>
+      <div className="op-bar">
+        <button className={filter === "problem" ? "primary" : ""} onClick={() => setFilter("problem")}>
+          문제 있음 ({c.critical + c.warn})
+        </button>
+        <button className={filter === "critical" ? "primary" : ""} onClick={() => setFilter("critical")}>
+          위험 ({c.critical})
+        </button>
+        <button className={filter === "all" ? "primary" : ""} onClick={() => setFilter("all")}>
+          전체 ({c.critical + c.warn + c.ok})
+        </button>
+        <input className="op-search" placeholder="이름/네임스페이스 검색" value={q}
+               onChange={(e) => setQ(e.target.value)} />
+        <span className="stat">정상 {c.ok} · 주의 {c.warn} · 위험 {c.critical}</span>
+      </div>
+      <div className="panel-body op-body">
+        {!data && <div className="empty">데이터 없음</div>}
+        {data && rows.length === 0 && <div className="empty">해당 워크로드 없음</div>}
+        {rows.length > 0 && (
+          <table>
+            <thead>
+              <tr>
+                <th></th><th>Namespace</th><th>Workload</th><th>Ready</th><th>Nodes</th>
+                <th>재기동</th><th>사용량/req 최대</th><th>경고 이벤트</th><th>이슈</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((w) => {
+                const key = `${w.namespace}/${w.kind}/${w.name}`;
+                const isOpen = open === key;
+                return (
+                  <Fragment key={key}>
+                    <tr className={`op-row st-${w.status}`} onClick={() => setOpen(isOpen ? null : key)}>
+                      <td><span className={`st-dot ${w.status}`} title={STATUS_LABEL[w.status]} /></td>
+                      <td>{w.namespace}</td>
+                      <td>{isOpen ? "▾" : "▸"} {w.kind}/{w.name}</td>
+                      <td className={w.replicas_ready < w.replicas_desired ? "txt-warn" : ""}>
+                        {w.replicas_ready}/{w.replicas_desired}
+                      </td>
+                      <td>{w.distinct_nodes}</td>
+                      <td className={w.pods.restarts > 0 ? "txt-warn" : ""}>{w.pods.restarts}</td>
+                      <td className={(w.max_usage_ratio ?? 0) > 1 ? "txt-warn" : ""}>{pct(w.max_usage_ratio)}</td>
+                      <td>{w.event_count || "-"}</td>
+                      <td>{w.issues.length || "-"}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="op-detail">
+                        <td colSpan={9}>
+                          <OpDetail w={w} isAdmin={isAdmin} onApply={onApply} onEdit={onEdit} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OpDetail({ w, isAdmin, onApply, onEdit }: {
+  w: OpWorkload; isAdmin: boolean;
+  onApply: (fp: string, dry: boolean) => void;
+  onEdit: (w: OpWorkload, c: OpContainer) => void;
+}) {
+  return (
+    <div className="op-grid">
+      <div>
+        <h3>이슈 · 튜닝 제안 ({w.issues.length})</h3>
+        {w.issues.length === 0 && <div className="empty">없음</div>}
+        {w.issues.map((i) => (
+          <div key={i.fingerprint} className={`issue sev-${i.severity}`}>
+            <div className="issue-title"><span className={`badge ${i.severity}`}>{i.rule_id}</span> {i.title}</div>
+            <div className="issue-detail">{i.detail}</div>
+            <div className="issue-foot">
+              <span className={`disp ${i.disposition}`}>{i.has_action ? i.disposition : "진단 전용"}</span>
+              {isAdmin && i.has_action && (
+                <>
+                  <button onClick={() => onApply(i.fingerprint, true)}>Dry-run</button>
+                  <button className="primary" onClick={() => {
+                    if (confirm(`${w.kind}/${w.name} 에 '${i.rule_id}' 조치를 실제 적용할까요?`))
+                      onApply(i.fingerprint, false);
+                  }}>적용</button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3>경고 이벤트 ({w.event_count})</h3>
+        {w.events.length === 0 && <div className="empty">없음</div>}
+        <ul className="feed">
+          {w.events.map((e, idx) => (
+            <li key={idx} title={e.message}>
+              <span className="badge warn">{e.reason}</span> ×{e.count}{" "}
+              <span className="mono">{e.object}</span>
+              <div className="ev-msg muted">{e.message}</div>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <h3>리소스 (p95 / requests / limits)</h3>
+        <table>
+          <thead><tr><th>Container</th><th>CPU</th><th>Mem</th><th></th></tr></thead>
+          <tbody>
+            {w.containers.map((c) => (
+              <tr key={c.name}>
+                <td>{c.name}</td>
+                <td className="mono">
+                  {c.usage_p95.cpu || "-"} / {c.requests.cpu || "unset"} / {c.limits.cpu || "-"}
+                  {c.cpu_ratio != null && <b className={c.cpu_ratio > 1 ? "txt-warn" : ""}> ({pct(c.cpu_ratio)})</b>}
+                </td>
+                <td className="mono">
+                  {c.usage_p95.memory || "-"} / {c.requests.memory || "unset"} / {c.limits.memory || "-"}
+                  {c.mem_ratio != null && <b className={c.mem_ratio > 1 ? "txt-warn" : ""}> ({pct(c.mem_ratio)})</b>}
+                </td>
+                <td>{isAdmin && <button onClick={() => onEdit(w, c)}>편집</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <h3>문제 Pod ({w.pods.problem_count}/{w.pods.total})</h3>
+        {w.pods.problems.length === 0 && <div className="empty">없음</div>}
+        {w.pods.problems.map((p) => (
+          <div key={p.name} className="mono">
+            {p.name} · {p.phase} · 재기동 {p.restarts}{p.reason && ` · ${p.reason}`}{p.node && ` · ${p.node}`}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

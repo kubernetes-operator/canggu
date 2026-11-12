@@ -47,7 +47,10 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
             rules.detect_unschedulable(cid, wl, pods),
             rules.detect_image_pull_backoff(cid, wl, pods),
         ]
-        issues.extend(i for i in candidates if i is not None)
+        for i in candidates:
+            if i is not None:
+                i.target = i.target or f"{wl.kind}/{wl.name}"
+                issues.append(i)
 
     # 이벤트 기반 운영 튜닝 제안(워크로드 상관)
     issues.extend(rules.detect_events(cid, snapshot.events, pod_owner))

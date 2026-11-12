@@ -171,6 +171,26 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   }).then(j);
 
+export type OpContainer = {
+  name: string; requests: { cpu: string; memory: string }; limits: { cpu: string; memory: string };
+  usage_p95: { cpu: string; memory: string }; cpu_ratio: number | null; mem_ratio: number | null;
+};
+export type OpWorkload = {
+  namespace: string; kind: string; name: string; status: "ok" | "warn" | "critical";
+  replicas_desired: number; replicas_ready: number; distinct_nodes: number;
+  pods: { total: number; restarts: number; problem_count: number;
+          problems: { name: string; node: string; phase: string; restarts: number; reason: string }[] };
+  containers: OpContainer[]; max_usage_ratio: number | null;
+  events: { reason: string; message: string; count: number; last_seen: string; object: string }[];
+  event_count: number;
+  issues: { fingerprint: string; rule_id: string; severity: string; title: string; detail: string;
+            disposition: string; has_action: boolean; risk_tier: string | null }[];
+};
+export type Operating = {
+  namespace: string | null; counts: { ok: number; warn: number; critical: number };
+  workloads: OpWorkload[];
+};
+
 export type Me = { username: string; role: string; scope_type: string; scope_ref: string };
 
 export const api = {
@@ -214,6 +234,8 @@ export const api = {
     get(`api/clusters/${c}/routes?namespace=${encodeURIComponent(ns)}`) as Promise<RouteEdge[]>,
   events: (c: string, ns: string) =>
     get(`api/clusters/${c}/events?namespace=${encodeURIComponent(ns)}`) as Promise<K8sEvent[]>,
+  operating: (c: string, ns: string) =>
+    get(`api/clusters/${c}/operating?namespace=${encodeURIComponent(ns)}`) as Promise<Operating>,
   issues: (c: string, ns: string) =>
     get(`api/clusters/${c}/issues?namespace=${encodeURIComponent(ns)}`) as Promise<Issue[]>,
   commands: (c: string) => get(`api/commands?cluster_id=${c}`) as Promise<Command[]>,

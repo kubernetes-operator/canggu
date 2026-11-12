@@ -340,6 +340,7 @@ def detect_events(
             rule_id=rule_id,
             cluster_id=cluster_id,
             namespace=ns,
+            target=target,
             severity="warn",
             title=f"{target}: {g['title']} (×{g['count']})",
             detail=f"{g['hint']} (대상 {len(g['objs'])}개)",
