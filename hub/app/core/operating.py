@@ -8,11 +8,12 @@ from __future__ import annotations
 import re
 
 from app.remediation.quantity import parse_cpu, parse_mem
-from app.schemas import Issue, TelemetrySnapshot
+from app.schemas import Issue, TelemetrySnapshot, Workload
 
 _SEV_ORDER = {"critical": 0, "warn": 1, "ok": 2}
 _RS_HASH = re.compile(r"^(.+)-[a-z0-9]{5,10}$")  # ReplicaSet 해시 접미사
 MAX_EVENTS = 8
+_SKIP_OWNER_KINDS = {"", "Node"}  # static pod 등 — 워크로드로 보지 않음
 MAX_PROBLEM_PODS = 8
 
 
@@ -63,10 +64,26 @@ def build_operating(
         if in_ns(i) and i.target:
             issues_by_wl.setdefault((i.namespace, i.target), []).append(i)
 
+    # agent 가 스펙을 수집하지 않는 소유자(StatefulSet/DaemonSet/Job 등)는 Pod·이벤트·이슈로 보충.
+    workloads = [w for w in snapshot.workloads if in_ns(w)]
+    known = {(w.namespace, f"{w.kind}/{w.name}") for w in workloads}
+    extra_keys = sorted(
+        k for k in set(pods_by_wl) | set(events_by_wl) | set(issues_by_wl)
+        if k not in known and k[1].split("/", 1)[0] not in _SKIP_OWNER_KINDS
+    )
+    for ns, target in extra_keys:
+        kind, name = target.split("/", 1)
+        pods = pods_by_wl.get((ns, target), [])
+        workloads.append(Workload(
+            namespace=ns, kind=kind, name=name,
+            replicas_desired=len(pods),
+            replicas_ready=sum(1 for p in pods if p.phase in ("Running", "Succeeded")),
+            distinct_nodes=len({p.node for p in pods if p.node}),
+        ))
+    partial = set(extra_keys)
+
     rows = []
-    for wl in snapshot.workloads:
-        if not in_ns(wl):
-            continue
+    for wl in workloads:
         key = (wl.namespace, f"{wl.kind}/{wl.name}")
         pods = pods_by_wl.get(key, [])
         evs = sorted(events_by_wl.get(key, []), key=lambda e: e.last_seen, reverse=True)
@@ -109,6 +126,7 @@ def build_operating(
         rows.append({
             "namespace": wl.namespace, "kind": wl.kind, "name": wl.name,
             "status": status,
+            "partial": key in partial,  # 스펙(replicas/resources) 미수집 — Pod 기준 추정
             "replicas_desired": wl.replicas_desired, "replicas_ready": wl.replicas_ready,
             "distinct_nodes": wl.distinct_nodes,
             "pods": {

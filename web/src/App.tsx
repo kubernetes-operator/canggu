@@ -1006,7 +1006,10 @@ function OperatingPanel({ data, isAdmin, onApply, onEdit }: {
                     <tr className={`op-row st-${w.status}`} onClick={() => setOpen(isOpen ? null : key)}>
                       <td><span className={`st-dot ${w.status}`} title={STATUS_LABEL[w.status]} /></td>
                       <td>{w.namespace}</td>
-                      <td>{isOpen ? "▾" : "▸"} {w.kind}/{w.name}</td>
+                      <td>
+                        {isOpen ? "▾" : "▸"} {w.kind}/{w.name}
+                        {w.partial && <span className="badge" title="agent 가 이 종류의 스펙을 수집하지 않아 Pod 기준으로 추정"> Pod 기준</span>}
+                      </td>
                       <td className={w.replicas_ready < w.replicas_desired ? "txt-warn" : ""}>
                         {w.replicas_ready}/{w.replicas_desired}
                       </td>
@@ -1078,7 +1081,8 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
       </div>
       <div>
         <h3>리소스 (p95 / requests / limits)</h3>
-        <table>
+        {w.partial && <div className="empty">이 워크로드 종류는 리소스 스펙을 아직 수집하지 않습니다.</div>}
+        {!w.partial && <table>
           <thead><tr><th>Container</th><th>CPU</th><th>Mem</th><th></th></tr></thead>
           <tbody>
             {w.containers.map((c) => (
@@ -1096,7 +1100,7 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table>}
         <h3>문제 Pod ({w.pods.problem_count}/{w.pods.total})</h3>
         {w.pods.problems.length === 0 && <div className="empty">없음</div>}
         {w.pods.problems.map((p) => (

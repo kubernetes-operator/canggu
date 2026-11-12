@@ -72,3 +72,17 @@ def test_issue_target_populated():
     snap = _snap()
     for i in engine.evaluate(snap, 1.5):
         assert i.target, i.rule_id
+
+
+def test_operating_includes_uncollected_owner_kinds():
+    snap = _snap()
+    snap.pods.append(Pod(namespace="b", name="ds-x", node="n1", phase="Running",
+                         restart_count=2, owner_kind="DaemonSet", owner_name="agent"))
+    snap.pods.append(Pod(namespace="b", name="static-n1", node="n1", phase="Running",
+                         owner_kind="Node", owner_name="n1"))
+    out = build_operating(snap, engine.evaluate(snap, 1.5), None)
+    rows = {(r["namespace"], r["kind"], r["name"]): r for r in out["workloads"]}
+    ds = rows[("b", "DaemonSet", "agent")]
+    assert ds["partial"] and ds["pods"]["total"] == 1 and ds["pods"]["restarts"] == 2
+    assert not any(k[1] == "Node" for k in rows)
+    assert rows[("a", "Deployment", "api")]["partial"] is False
