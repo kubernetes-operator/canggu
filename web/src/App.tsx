@@ -295,7 +295,7 @@ export default function App() {
           <div className="tile"><div className="tile-v">{summary.unhealthy_services}</div><div className="tile-l">비정상 SVC</div></div>
           <div className="tile"><div className="tile-v">{summary.unbound_pvcs}</div><div className="tile-l">미바인딩 PVC</div></div>
           <div className="tile"><div className="tile-v">{summary.workloads_single_node}</div><div className="tile-l">노드 미분산</div></div>
-          <div className="tile"><div className="tile-v warn">{summary.warning_events ?? 0}</div><div className="tile-l">경고 이벤트</div></div>
+          <div className="tile"><div className="tile-v warn">{summary.warning_events ?? 0}</div><div className="tile-l">경고 이벤트{summary.warning_events_noise ? ` (+${summary.warning_events_noise} 제외)` : ""}</div></div>
         </section>
       )}
 
@@ -1014,7 +1014,10 @@ function OperatingPanel({ data, isAdmin, onApply, onEdit }: {
                         {w.replicas_ready}/{w.replicas_desired}
                       </td>
                       <td>{w.distinct_nodes}</td>
-                      <td className={w.pods.restarts > 0 ? "txt-warn" : ""}>{w.pods.restarts}</td>
+                      <td className={w.pods.recent_restarts > 0 ? "txt-warn" : "muted"}
+                          title="누적 restartCount (최근 1시간 내 재기동한 Pod 수)">
+                        {w.pods.restarts}{w.pods.recent_restarts > 0 && ` (최근 ${w.pods.recent_restarts})`}
+                      </td>
                       <td className={(w.max_usage_ratio ?? 0) > 1 ? "txt-warn" : ""}>{pct(w.max_usage_ratio)}</td>
                       <td>{w.event_count || "-"}</td>
                       <td>{w.issues.length || "-"}</td>
@@ -1067,12 +1070,13 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
         ))}
       </div>
       <div>
-        <h3>경고 이벤트 ({w.event_count})</h3>
+        <h3>경고 이벤트 ({w.event_count}{w.noise_event_count > 0 && `, 무해 ${w.noise_event_count} 제외`})</h3>
         {w.events.length === 0 && <div className="empty">없음</div>}
         <ul className="feed">
           {w.events.map((e, idx) => (
-            <li key={idx} title={e.message}>
-              <span className="badge warn">{e.reason}</span> ×{e.count}{" "}
+            <li key={idx} title={e.message} className={e.noise ? "noise" : ""}>
+              <span className={`badge ${e.noise ? "" : "warn"}`}>{e.reason}</span>
+              {e.noise && <span className="muted"> 무해(상태 판정 제외)</span>} ×{e.count}{" "}
               <span className="mono">{e.object}</span>
               <div className="ev-msg muted">{e.message}</div>
             </li>
@@ -1105,7 +1109,7 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
         {w.pods.problems.length === 0 && <div className="empty">없음</div>}
         {w.pods.problems.map((p) => (
           <div key={p.name} className="mono">
-            {p.name} · {p.phase} · 재기동 {p.restarts}{p.reason && ` · ${p.reason}`}{p.node && ` · ${p.node}`}
+            {p.name} · {p.phase} · 재기동 {p.restarts}{p.recent_restart && " (최근 증가)"}{p.reason && ` · ${p.reason}`}{p.node && ` · ${p.node}`}
           </div>
         ))}
       </div>

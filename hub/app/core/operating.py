@@ -37,9 +37,49 @@ def _event_target(e, pod_owner: dict[tuple[str, str], str]) -> str:
     return f"{e.involved_kind}/{e.involved_name}"
 
 
+def update_restart_history(
+    history: dict[tuple[str, str], list], pods: list, now: float
+) -> None:
+    """스냅샷 간 restartCount 증가를 추적. 최초 관측은 기준선(증가 시각 None)으로만 기록.
+
+    사라진 Pod 는 제거. 카운트가 줄면(재생성) 기준선 재설정.
+    """
+    seen = set()
+    for p in pods:
+        key = (p.namespace, p.name)
+        seen.add(key)
+        prev = history.get(key)
+        if prev is None or p.restart_count < prev[0]:
+            history[key] = [p.restart_count, None]
+        elif p.restart_count > prev[0]:
+            history[key] = [p.restart_count, now]
+    for key in list(history):
+        if key not in seen:
+            del history[key]
+
+
+def recent_restarts(
+    history: dict[tuple[str, str], list], now: float, window: float
+) -> set[tuple[str, str]]:
+    """window 초 이내에 restartCount 가 증가한 Pod 집합."""
+    return {k for k, (_, ts) in history.items() if ts is not None and now - ts <= window}
+
+
+def parse_noise_reasons(raw: str) -> frozenset[str]:
+    """콤마 구분 이벤트 reason 목록 → 집합 (설정값 파싱)."""
+    return frozenset(r.strip() for r in raw.split(",") if r.strip())
+
+
 def build_operating(
-    snapshot: TelemetrySnapshot, issues: list[Issue], namespace: str | None
+    snapshot: TelemetrySnapshot, issues: list[Issue], namespace: str | None,
+    noise_reasons: frozenset[str] = frozenset(),
+    recent_restart_pods: set[tuple[str, str]] | None = None,
 ) -> dict:
+    """noise_reasons: 상태 판정·이벤트 수 집계에서 제외할 무해한 이벤트 reason(상세에는 표시).
+
+    recent_restart_pods: 최근 재기동이 관측된 Pod. None 이면 누적 restartCount>0 을 문제로 본다(이력 없음).
+    주어지면 누적 재기동만 있는 Running Pod 는 문제로 보지 않는다(과거 노드 재부팅 등).
+    """
     def in_ns(x) -> bool:
         return namespace is None or x.namespace == namespace
 
@@ -86,16 +126,23 @@ def build_operating(
     for wl in workloads:
         key = (wl.namespace, f"{wl.kind}/{wl.name}")
         pods = pods_by_wl.get(key, [])
-        evs = sorted(events_by_wl.get(key, []), key=lambda e: e.last_seen, reverse=True)
+        all_evs = sorted(events_by_wl.get(key, []), key=lambda e: e.last_seen, reverse=True)
+        evs = [e for e in all_evs if e.reason not in noise_reasons]
+        noise_evs = [e for e in all_evs if e.reason in noise_reasons]
         wl_issues = issues_by_wl.get(key, [])
+
+        def restarted(p) -> bool:
+            if recent_restart_pods is None:
+                return p.restart_count > 0
+            return (p.namespace, p.name) in recent_restart_pods
 
         problem_pods = [
             {"name": p.name, "node": p.node, "phase": p.phase,
-             "restarts": p.restart_count,
+             "restarts": p.restart_count, "recent_restart": restarted(p),
              "reason": p.waiting_reason or p.last_terminated_reason
                        or ("Unschedulable" if p.unschedulable else "")}
             for p in pods
-            if p.restart_count > 0 or p.waiting_reason or p.unschedulable
+            if restarted(p) or p.waiting_reason or p.unschedulable
             or p.phase not in ("Running", "Succeeded")
         ]
 
@@ -132,6 +179,7 @@ def build_operating(
             "pods": {
                 "total": len(pods),
                 "restarts": sum(p.restart_count for p in pods),
+                "recent_restarts": sum(1 for p in pods if restarted(p)),
                 "problems": problem_pods[:MAX_PROBLEM_PODS],
                 "problem_count": len(problem_pods),
             },
@@ -139,10 +187,12 @@ def build_operating(
             "max_usage_ratio": max_ratio,
             "events": [
                 {"reason": e.reason, "message": e.message, "count": e.count,
-                 "last_seen": e.last_seen, "object": f"{e.involved_kind}/{e.involved_name}"}
-                for e in evs[:MAX_EVENTS]
+                 "last_seen": e.last_seen, "object": f"{e.involved_kind}/{e.involved_name}",
+                 "noise": e.reason in noise_reasons}
+                for e in (evs + noise_evs)[:MAX_EVENTS]
             ],
             "event_count": sum(e.count for e in evs),
+            "noise_event_count": sum(e.count for e in noise_evs),
             "issues": [
                 {"fingerprint": i.fingerprint, "rule_id": i.rule_id, "severity": i.severity,
                  "title": i.title, "detail": i.detail, "disposition": i.disposition,

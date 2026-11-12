@@ -41,6 +41,16 @@
 - 백업 목록/상태 조회, **이 NS 백업 생성**, 완료 백업에서 **복구**(파괴적 — 확인 필요, 클러스터 admin).
 - **정기 백업 스케줄**: NS + cron 으로 생성/삭제.
 
+## Operating 뷰 (워크로드 통합 상태)
+
+대시보드 상단 패널. 워크로드별로 Pod 상태·p95 사용량·경고 이벤트·이슈(제안)를 한 행에 모으고, 행을 펼치면 상세와 조치 버튼이 나온다. API: `GET /api/clusters/{c}/operating?namespace=`.
+
+- 상태: **위험**(critical 이슈 또는 Ready 0) · **주의**(이슈, 경고 이벤트, Ready 부족, 문제 Pod) · **정상**
+- StatefulSet/DaemonSet/Job 은 agent 가 스펙을 수집하지 않아 Pod 기준으로 추정(`Pod 기준` 배지, 리소스 미표시)
+- 노이즈 억제(hub 설정):
+  - `CANGGU_EVENT_NOISE_REASONS` (기본 `DNSConfigForming`): 상태 판정·경고 수에서 제외할 이벤트 reason, 콤마 구분. 상세에는 흐리게 표시
+  - `CANGGU_RESTART_RECENT_WINDOW_SECONDS` (기본 3600): 이 시간 안에 restartCount 가 **증가한** Pod 만 문제로 본다. 누적값(과거 노드 재부팅 등)은 무시. hub 가 스냅샷 간 증가를 추적하므로 hub 재시작 직후에는 이력이 비어 있다
+
 ## API 요약
 
 - 인증: `POST /api/auth/login`, `GET /api/auth/me`, `*/api/auth/users`

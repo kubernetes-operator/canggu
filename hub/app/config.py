@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # 동일 이슈(fingerprint) 자동 재적용 억제 기간(안티플래핑).
     remediation_cooldown_seconds: float = 300.0
 
+    # Operating 뷰/요약에서 상태 판정·경고 수 집계에서 제외할 무해한 이벤트 reason(콤마 구분).
+    # DNSConfigForming: 노드 resolv.conf nameserver 초과 경고 — 워크로드 문제가 아님.
+    event_noise_reasons: str = "DNSConfigForming"
+
+    # 이 시간(초) 안에 restartCount 가 증가한 Pod 만 '재기동 문제'로 본다(누적값 무시).
+    restart_recent_window_seconds: float = 3600.0
+
     cors_origins: str = "http://localhost:5173"
 
     # 빌드된 웹 SPA(dist) 경로. 비어있으면 정적 서빙 비활성(로컬 dev 는 vite 사용).

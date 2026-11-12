@@ -91,10 +91,20 @@ async def operating(
     cluster_id: str, namespace: str | None = Query(None), p: Principal = Depends(require_user)
 ) -> dict:
     """워크로드별 Pod 상태·사용량·경고 이벤트·이슈 통합 뷰(스코프 적용)."""
-    from app.core.operating import build_operating
+    from app.config import get_settings
+    import time
+
+    from app.core.operating import build_operating, parse_noise_reasons, recent_restarts
 
     ns = scope.effective_namespace(p, cluster_id, namespace)
-    return build_operating(_snapshot(cluster_id), hub.issues.get(cluster_id, []), ns)
+    s = get_settings()
+    recent = recent_restarts(
+        hub.restart_history.get(cluster_id, {}), time.time(), s.restart_recent_window_seconds
+    )
+    return build_operating(
+        _snapshot(cluster_id), hub.issues.get(cluster_id, []), ns,
+        parse_noise_reasons(s.event_noise_reasons), recent,
+    )
 
 
 @router.get("/{cluster_id}/summary")
@@ -112,7 +122,13 @@ async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict
     svcs = scoped(snap.services)
     storage = scoped(snap.storage)
     workloads = scoped(snap.workloads)
-    warn_events = len(scoped(snap.events))
+    from app.config import get_settings
+    from app.core.operating import parse_noise_reasons
+
+    noise = parse_noise_reasons(get_settings().event_noise_reasons)
+    all_warn = scoped(snap.events)
+    warn_events = sum(1 for e in all_warn if e.reason not in noise)
+    noise_events = len(all_warn) - warn_events
     issues = scoped(_hub.issues.get(cluster_id, []))
 
     by_sev = {"critical": 0, "warn": 0, "info": 0}
@@ -146,4 +162,5 @@ async def summary(cluster_id: str, p: Principal = Depends(require_user)) -> dict
         "unbound_pvcs": unbound_pvc,
         "workloads_single_node": single_node,
         "warning_events": warn_events,
+        "warning_events_noise": noise_events,
     }

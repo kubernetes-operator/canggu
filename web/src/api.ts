@@ -178,11 +178,13 @@ export type OpContainer = {
 export type OpWorkload = {
   namespace: string; kind: string; name: string; status: "ok" | "warn" | "critical"; partial: boolean;
   replicas_desired: number; replicas_ready: number; distinct_nodes: number;
-  pods: { total: number; restarts: number; problem_count: number;
-          problems: { name: string; node: string; phase: string; restarts: number; reason: string }[] };
+  pods: { total: number; restarts: number; recent_restarts: number; problem_count: number;
+          problems: { name: string; node: string; phase: string; restarts: number; reason: string;
+                      recent_restart: boolean }[] };
   containers: OpContainer[]; max_usage_ratio: number | null;
-  events: { reason: string; message: string; count: number; last_seen: string; object: string }[];
-  event_count: number;
+  events: { reason: string; message: string; count: number; last_seen: string; object: string;
+            noise: boolean }[];
+  event_count: number; noise_event_count: number;
   issues: { fingerprint: string; rule_id: string; severity: string; title: string; detail: string;
             disposition: string; has_action: boolean; risk_tier: string | null }[];
 };
@@ -244,7 +246,7 @@ export const api = {
     issues_by_severity: Record<string, number>; issues_by_rule: Record<string, number>;
     totals: Record<string, number>;
     restarting_pods: number; unhealthy_services: number; unbound_pvcs: number;
-    workloads_single_node: number; warning_events: number;
+    workloads_single_node: number; warning_events: number; warning_events_noise?: number;
   }>,
   namespaceModes: (c: string) =>
     get(`api/clusters/${c}/namespace-modes`) as Promise<Record<string, string>>,

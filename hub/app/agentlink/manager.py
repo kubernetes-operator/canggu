@@ -35,6 +35,8 @@ class Hub:
         self._lock = asyncio.Lock()
         self._pending: dict[str, asyncio.Future] = {}  # command_id -> 결과 future(요청-응답형)
         self._last_dispatch: dict[str, float] = {}  # fingerprint -> monotonic ts(안티플래핑)
+        # 클러스터별 Pod 재기동 이력: (ns, pod) -> [마지막 관측 restartCount, 마지막 증가 시각(epoch)|None]
+        self.restart_history: dict[str, dict[tuple[str, str], list]] = {}
 
     # ── agent 수명주기 ──────────────────────────────────────────────────────
     async def register_agent(self, hello: Hello, ws: WebSocket) -> None:
@@ -72,6 +74,11 @@ class Hub:
     # ── 텔레메트리 → 엔진 → 디스패치 ─────────────────────────────────────────
     async def on_telemetry(self, snapshot: TelemetrySnapshot) -> None:
         self.snapshots[snapshot.cluster_id] = snapshot
+        from app.core.operating import update_restart_history
+
+        update_restart_history(
+            self.restart_history.setdefault(snapshot.cluster_id, {}), snapshot.pods, time.time()
+        )
         s = get_settings()
 
         # 연결 후 첫 collect 에서야 metrics 가용 여부가 확정되므로 텔레메트리마다 갱신.

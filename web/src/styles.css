@@ -176,3 +176,4 @@ th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background
 .op-grid h3 { font-size: 13px; color: #a9c4e4; margin: 0 0 8px; }
 .op-grid h3:not(:first-child) { margin-top: 14px; }
 @media (max-width: 1100px) { .op-grid { grid-template-columns: 1fr; } }
+.feed li.noise { opacity: 0.55; }

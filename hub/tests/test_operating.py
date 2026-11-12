@@ -86,3 +86,54 @@ def test_operating_includes_uncollected_owner_kinds():
     assert ds["partial"] and ds["pods"]["total"] == 1 and ds["pods"]["restarts"] == 2
     assert not any(k[1] == "Node" for k in rows)
     assert rows[("a", "Deployment", "api")]["partial"] is False
+
+
+def test_noise_events_excluded_from_status():
+    from app.core.operating import parse_noise_reasons
+
+    snap = _snap()
+    snap.events.append(Event(namespace="a", type="Warning", reason="DNSConfigForming",
+                             involved_kind="Pod", involved_name="quiet-1", count=999))
+    noise = parse_noise_reasons(" DNSConfigForming , ")
+    assert noise == {"DNSConfigForming"}
+
+    rows = {r["name"]: r for r in build_operating(snap, [], None, noise)["workloads"]}
+    quiet = rows["quiet"]
+    assert quiet["status"] == "ok"
+    assert quiet["event_count"] == 0 and quiet["noise_event_count"] == 999
+    assert quiet["events"][0]["noise"] is True
+
+    # 제외 목록이 없으면 기존대로 경고로 취급
+    rows = {r["name"]: r for r in build_operating(snap, [], None)["workloads"]}
+    assert rows["quiet"]["status"] == "warn" and rows["quiet"]["event_count"] == 999
+
+
+def test_restart_history_tracks_only_increases():
+    from app.core.operating import recent_restarts, update_restart_history
+
+    h: dict = {}
+    p = Pod(namespace="a", name="x", phase="Running", restart_count=10)
+    update_restart_history(h, [p], now=0)          # 최초 관측: 기준선
+    assert recent_restarts(h, now=10, window=3600) == set()
+    update_restart_history(h, [p], now=100)        # 변화 없음
+    assert recent_restarts(h, now=100, window=3600) == set()
+    p2 = p.model_copy(update={"restart_count": 11})
+    update_restart_history(h, [p2], now=200)       # 증가 → 최근 재기동
+    assert recent_restarts(h, now=300, window=3600) == {("a", "x")}
+    assert recent_restarts(h, now=200 + 3601, window=3600) == set()  # 창 밖
+    update_restart_history(h, [], now=400)         # 사라진 Pod 제거
+    assert h == {}
+
+
+def test_cumulative_restarts_ignored_with_history():
+    snap = _snap()
+    snap.pods.append(Pod(namespace="a", name="quiet-2", node="n2", phase="Running",
+                         restart_count=10, owner_kind="Deployment", owner_name="quiet"))
+    rows = {r["name"]: r for r in build_operating(snap, [], None, recent_restart_pods=set())["workloads"]}
+    assert rows["quiet"]["status"] == "ok" and rows["quiet"]["pods"]["restarts"] == 10
+    # CrashLoop 대기 중인 Pod 는 이력과 무관하게 문제
+    assert rows["api"]["pods"]["problem_count"] == 1
+
+    rows = {r["name"]: r for r in build_operating(
+        snap, [], None, recent_restart_pods={("a", "quiet-2")})["workloads"]}
+    assert rows["quiet"]["status"] == "warn" and rows["quiet"]["pods"]["recent_restarts"] == 1
