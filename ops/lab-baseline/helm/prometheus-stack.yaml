@@ -1,0 +1,14 @@
+# release: prometheus-stack (ns monitoring), chart kube-prometheus-stack-83.4.2
+# grafana sidecar 는 dashboard/datasources 가 같은 값을 공유 → 두 컨테이너 중 큰 값(10m/90Mi) 사용.
+grafana:
+  resources:
+    requests: {cpu: 13m, memory: 165Mi}
+  sidecar:
+    resources:
+      requests: {cpu: 10m, memory: 90Mi}
+prometheusOperator:
+  resources:
+    requests: {cpu: 5m, memory: 86Mi}
+kube-state-metrics:
+  resources:
+    requests: {cpu: 6m, memory: 89Mi}

@@ -1,0 +1,3 @@
+# release: gitea (ns gitea), chart gitea-12.5.3
+resources:
+  requests: {cpu: 8m, memory: 105Mi}

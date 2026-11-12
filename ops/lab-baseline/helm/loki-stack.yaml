@@ -1,0 +1,7 @@
+# release: loki-stack (ns logging), chart loki-stack-2.10.3
+grafana:
+  resources:
+    requests: {cpu: 11m, memory: 193Mi}
+  sidecar:
+    resources:
+      requests: {cpu: 5m, memory: 78Mi}
