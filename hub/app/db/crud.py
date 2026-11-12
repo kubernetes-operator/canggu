@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -226,6 +226,34 @@ def record_command(cmd: Command, rule_id: str, risk_tier: str, mode_at_issue: st
             )
         )
         db.commit()
+
+
+def recent_auto_applies(
+    cluster_id: str, namespace: str, kind: str, name: str, rule_id: str, window_seconds: float
+) -> int:
+    """창 안에서 엔진이 같은 대상·규칙으로 실제(dry_run 아님) 발송한 명령 수(실패 제외)."""
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=window_seconds)
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(CommandAudit.issued_at).where(
+                CommandAudit.cluster_id == cluster_id,
+                CommandAudit.namespace == namespace,
+                CommandAudit.target_kind == kind,
+                CommandAudit.target_name == name,
+                CommandAudit.rule_id == rule_id,
+                CommandAudit.issued_by == "engine",
+                CommandAudit.dry_run.is_(False),
+                CommandAudit.phase != "FAILED",
+            ).order_by(CommandAudit.issued_at.desc()).limit(50)
+        ).all()
+    n = 0
+    for ts in rows:
+        # SQLite 는 naive, Postgres 는 aware → UTC naive 로 정규화해 비교.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        if ts >= cutoff:
+            n += 1
+    return n
 
 
 def update_command_phase(

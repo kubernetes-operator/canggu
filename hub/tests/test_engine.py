@@ -264,3 +264,22 @@ def test_statefulset_never_auto_dispatched():
         issues, cluster_mode="ACTIVE", ns_mode_of=lambda ns: None, frozen=False, seq_start=0
     )
     assert cmds == [] and rs.disposition == "manual_required"
+
+
+def test_gitops_managed_never_auto_dispatched():
+    snap = _snap_with_underprovisioned()
+    snap.workloads[0].gitops_manager = "argocd"
+    issues = engine.evaluate(snap, 1.5)
+    rs = _by_rule(issues, "resource-rightsize")
+    assert rs.gitops_manager == "argocd" and "git" in rs.detail
+    rs.suggested_action.auto_apply = True
+    _, cmds = engine.plan_dispatch(
+        issues, cluster_mode="ACTIVE", ns_mode_of=lambda ns: None, frozen=False, seq_start=0
+    )
+    assert cmds == [] and rs.disposition == "manual_required"
+
+
+def test_flapping_threshold():
+    assert engine.is_flapping(2, 3) is False
+    assert engine.is_flapping(3, 3) is True
+    assert engine.is_flapping(99, 0) is False  # 0 = 비활성

@@ -27,6 +27,10 @@
 - 전역 **freeze**: 모든 자동조정 즉시 중단(kill-switch).
 - **규칙 설정**("자동조정 규칙 설정" 패널): 규칙별 활성/비활성 + auto_apply(기본/항상자동/항상수동).
 - 동일 이슈는 쿨다운(기본 300s) 동안 재적용 억제.
+- **자동 적용 제외 대상**(ACTIVE 에서도 `manual_required`):
+  - GitOps 관리 리소스: agent 가 ArgoCD(`argocd.argoproj.io/tracking-id` 주석 또는 managedFields `argocd-controller`)·Flux(라벨/managedFields)를 감지. 직접 patch 하면 selfHeal 이 되돌리므로 제안에 "git 매니페스트에서 수정" 안내, 웹에 `argocd`/`flux` 배지, 수동 적용 시 경고
+  - StatefulSet(수동 적용만), DaemonSet(진단 전용)
+- **반복 적용 차단(플래핑 브레이커)**: 같은 대상·규칙의 엔진 자동 적용이 `CANGGU_REMEDIATION_FLAP_WINDOW_SECONDS`(기본 3600) 안에 `CANGGU_REMEDIATION_FLAP_THRESHOLD`(기본 3)회 이상이면 자동 적용 중단 → disposition `flapping`("반복 적용 차단"), 라이브 피드 `flapping_blocked`. 감사 원장(DB) 기준이라 hub 재시작에도 유지. 원인(다른 컨트롤러의 되돌림)을 해소하고 창이 지나면 자동 해제
 - 제안된 조치는 admin 이 **Dry-run**/**적용** 가능. 워크로드 리소스는 "편집"으로 수동 변경(dry-run 지원).
 
 ## kubeconfig 발급 (기능 #9)

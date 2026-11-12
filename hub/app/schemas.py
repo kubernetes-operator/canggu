@@ -30,6 +30,7 @@ class Workload(BaseModel):
     replicas_ready: int = 0
     distinct_nodes: int = 0
     has_spread_constraints: bool = False  # 기존 topologySpread/podAntiAffinity 존재 여부
+    gitops_manager: str = ""  # "argocd" | "flux" | "" — GitOps 가 관리하면 직접 patch 는 되돌려짐
     containers: list[Container] = Field(default_factory=list)
 
 
@@ -191,6 +192,7 @@ class Issue(BaseModel):
     cluster_id: str
     namespace: str
     target: str = ""  # "Kind/Name" 대상 워크로드(Operating 뷰 상관용)
+    gitops_manager: str = ""  # 대상이 GitOps 관리 리소스면 자동 적용 금지(되돌림 루프 방지)
     severity: Literal["info", "warn", "critical"] = "info"
     title: str
     detail: str = ""
@@ -198,5 +200,6 @@ class Issue(BaseModel):
     suggested_action: SuggestedAction | None = None
     # 이 이슈에 대해 엔진이 취한 조치(모드 게이트 결과)
     disposition: Literal[
-        "suggested_only", "applied", "auto_dispatched", "manual_required", "cooldown"
+        "suggested_only", "applied", "auto_dispatched", "manual_required", "cooldown",
+        "flapping",
     ] = "suggested_only"

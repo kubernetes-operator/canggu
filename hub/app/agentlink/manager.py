@@ -37,6 +37,7 @@ class Hub:
         self._last_dispatch: dict[str, float] = {}  # fingerprint -> monotonic ts(안티플래핑)
         # 클러스터별 Pod 재기동 이력: (ns, pod) -> [마지막 관측 restartCount, 마지막 증가 시각(epoch)|None]
         self.restart_history: dict[str, dict[tuple[str, str], list]] = {}
+        self._flap_notified: set[str] = set()  # 플래핑 차단 알림을 이미 보낸 fingerprint
 
     # ── agent 수명주기 ──────────────────────────────────────────────────────
     async def register_agent(self, hello: Hello, ws: WebSocket) -> None:
@@ -123,6 +124,24 @@ class Hub:
         now = time.monotonic()
         auto_issues = [i for i in issues if i.disposition == "auto_dispatched"]
         for cmd, issue in zip(commands, auto_issues):
+            recent = await run_in_threadpool(
+                crud.recent_auto_applies, cmd.cluster_id, cmd.namespace, cmd.target_kind,
+                cmd.target_name, issue.rule_id, s.remediation_flap_window_seconds,
+            )
+            if engine.is_flapping(recent, s.remediation_flap_threshold):
+                issue.disposition = "flapping"
+                issue.detail += (f" [자동 적용 중단: 최근 {int(s.remediation_flap_window_seconds)}초 "
+                                 f"동안 {recent}회 적용됨 — 다른 컨트롤러가 되돌리는 중으로 보임]")
+                if issue.fingerprint not in self._flap_notified:
+                    self._flap_notified.add(issue.fingerprint)
+                    await self.broadcast_event({
+                        "kind": "flapping_blocked", "cluster_id": cmd.cluster_id,
+                        "namespace": cmd.namespace,
+                        "target": f"{cmd.target_kind}/{cmd.target_name}",
+                        "rule_id": issue.rule_id, "recent_applies": recent,
+                    })
+                continue
+            self._flap_notified.discard(issue.fingerprint)
             if not engine.should_dispatch(
                 issue.fingerprint, self._last_dispatch, now, s.remediation_cooldown_seconds
             ):

@@ -177,3 +177,6 @@ th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background
 .op-grid h3:not(:first-child) { margin-top: 14px; }
 @media (max-width: 1100px) { .op-grid { grid-template-columns: 1fr; } }
 .feed li.noise { opacity: 0.55; }
+.disp.flapping { background: #3a1414; color: #ffb4a2; }
+.badge.gitops { background: #2a2140; color: #c9b6ff; margin-left: 4px; }
+.ev.flapping_blocked { background: #3a1414; color: #ffb4a2; }

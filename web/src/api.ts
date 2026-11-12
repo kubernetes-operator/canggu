@@ -176,7 +176,7 @@ export type OpContainer = {
   usage_p95: { cpu: string; memory: string }; cpu_ratio: number | null; mem_ratio: number | null;
 };
 export type OpWorkload = {
-  namespace: string; kind: string; name: string; status: "ok" | "warn" | "critical"; partial: boolean;
+  namespace: string; kind: string; name: string; status: "ok" | "warn" | "critical"; partial: boolean; gitops_manager: string;
   replicas_desired: number; replicas_ready: number; distinct_nodes: number;
   pods: { total: number; restarts: number; recent_restarts: number; problem_count: number;
           problems: { name: string; node: string; phase: string; restarts: number; reason: string;

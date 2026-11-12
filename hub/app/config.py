@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     remediation_default_frozen: bool = False
     # 동일 이슈(fingerprint) 자동 재적용 억제 기간(안티플래핑).
     remediation_cooldown_seconds: float = 300.0
+    # 플래핑 차단: 창(초) 안에 같은 대상·규칙 자동 적용이 threshold 회 이상이면 자동 적용 중단.
+    # (DB 감사 원장 기준이라 hub 재시작에도 유지). threshold 0 이면 비활성.
+    remediation_flap_window_seconds: float = 3600.0
+    remediation_flap_threshold: int = 3
 
     # Operating 뷰/요약에서 상태 판정·경고 수 집계에서 제외할 무해한 이벤트 reason(콤마 구분).
     # DNSConfigForming: 노드 resolv.conf nameserver 초과 경고 — 워크로드 문제가 아님.

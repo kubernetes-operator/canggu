@@ -6,7 +6,9 @@ from kubernetes.client import (
     V1StatefulSetSpec, V1StatefulSetStatus,
 )
 
-from app.kube import _workload_entry
+from kubernetes.client import V1ManagedFieldsEntry
+
+from app.kube import _gitops_manager, _workload_entry
 
 
 def _tpl():
@@ -40,3 +42,17 @@ def test_daemonset_entry_uses_scheduled_counts():
     w = _workload_entry("DaemonSet", ds, {}, [], 8)
     assert (w["replicas_desired"], w["replicas_ready"]) == (8, 7)
     assert w["has_spread_constraints"] is False
+
+
+def test_gitops_manager_detection():
+    assert _gitops_manager(V1ObjectMeta(name="x")) == ""
+    assert _gitops_manager(V1ObjectMeta(
+        name="x", annotations={"argocd.argoproj.io/tracking-id": "app:apps/Deployment:ns/x"})) == "argocd"
+    assert _gitops_manager(V1ObjectMeta(
+        name="x", managed_fields=[V1ManagedFieldsEntry(manager="argocd-controller")])) == "argocd"
+    assert _gitops_manager(V1ObjectMeta(
+        name="x", labels={"kustomize.toolkit.fluxcd.io/name": "apps"})) == "flux"
+    # helm 단독(app.kubernetes.io/instance 라벨)은 GitOps 로 보지 않음
+    assert _gitops_manager(V1ObjectMeta(
+        name="x", labels={"app.kubernetes.io/instance": "x"},
+        managed_fields=[V1ManagedFieldsEntry(manager="helm")])) == ""

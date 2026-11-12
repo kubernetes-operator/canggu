@@ -729,6 +729,23 @@ def _replica_counts(kind: str, obj) -> tuple[int, int]:
     return (desired, (st.ready_replicas or 0) if st else 0)
 
 
+_ARGO_MANAGER = "argocd-controller"
+_FLUX_MANAGERS = {"kustomize-controller", "helm-controller"}
+_FLUX_LABELS = ("kustomize.toolkit.fluxcd.io/name", "helm.toolkit.fluxcd.io/name")
+
+
+def _gitops_manager(meta) -> str:
+    """GitOps 관리 여부. ArgoCD(tracking annotation/managedFields) · Flux(라벨/managedFields)."""
+    ann = meta.annotations or {}
+    labels = meta.labels or {}
+    managers = {(m.manager or "") for m in (meta.managed_fields or [])}
+    if "argocd.argoproj.io/tracking-id" in ann or _ARGO_MANAGER in managers:
+        return "argocd"
+    if any(k in labels for k in _FLUX_LABELS) or managers & _FLUX_MANAGERS:
+        return "flux"
+    return ""
+
+
 def _workload_entry(kind: str, obj, metrics: dict, owned_pods: list[str], distinct_nodes: int) -> dict:
     """컨트롤러 객체 → 텔레메트리 workload(컨테이너별 워크로드 내 최대 사용량 포함)."""
     ns, name = obj.metadata.namespace, obj.metadata.name
@@ -754,6 +771,7 @@ def _workload_entry(kind: str, obj, metrics: dict, owned_pods: list[str], distin
         "replicas_ready": ready,
         "distinct_nodes": distinct_nodes,
         "has_spread_constraints": has_spread,
+        "gitops_manager": _gitops_manager(obj.metadata),
         "containers": containers,
     }
 

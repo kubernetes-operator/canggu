@@ -55,6 +55,10 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
         for i in candidates:
             if i is not None:
                 i.target = i.target or f"{wl.kind}/{wl.name}"
+                i.gitops_manager = wl.gitops_manager
+                if wl.gitops_manager and i.suggested_action is not None:
+                    i.detail += (f" ({wl.gitops_manager} 관리 리소스 — 직접 적용하면 되돌려집니다. "
+                                 "git 매니페스트에서 수정하세요)")
                 if wl.kind not in PATCHABLE_KINDS and i.suggested_action is not None:
                     # agent 에 patch 권한이 없는 종류(DaemonSet) → 진단 전용으로 강등
                     i.suggested_action = None
@@ -74,6 +78,15 @@ def should_dispatch(
         return False
     last_dispatch[fingerprint] = now
     return True
+
+
+def is_flapping(recent_applies: int, threshold: int) -> bool:
+    """동일 대상·규칙 자동 적용이 창 안에서 threshold 회 이상이면 플래핑.
+
+    같은 patch 를 반복 적용해야 한다는 것은 다른 컨트롤러(GitOps selfHeal, 오퍼레이터,
+    HPA/VPA 등)가 되돌리고 있다는 뜻 → 자동 적용을 멈추고 사람에게 넘긴다.
+    """
+    return threshold > 0 and recent_applies >= threshold
 
 
 def apply_rule_config(issues: list[Issue], config: dict[str, dict]) -> list[Issue]:
@@ -120,7 +133,8 @@ def plan_dispatch(
         if frozen or eff == "OBSERVE":
             issue.disposition = "suggested_only"
             continue
-        if not sa.auto_apply or sa.risk_tier == "high" or sa.target_kind not in AUTO_APPLY_KINDS:
+        if (not sa.auto_apply or sa.risk_tier == "high"
+                or sa.target_kind not in AUTO_APPLY_KINDS or issue.gitops_manager):
             issue.disposition = "manual_required"
             continue
 

@@ -173,6 +173,7 @@ def build_operating(
         rows.append({
             "namespace": wl.namespace, "kind": wl.kind, "name": wl.name,
             "status": status,
+            "gitops_manager": wl.gitops_manager,
             "partial": key in partial,  # 스펙(replicas/resources) 미수집 — Pod 기준 추정
             "replicas_desired": wl.replicas_desired, "replicas_ready": wl.replicas_ready,
             "distinct_nodes": wl.distinct_nodes,

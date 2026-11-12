@@ -1009,6 +1009,7 @@ function OperatingPanel({ data, isAdmin, onApply, onEdit }: {
                       <td>
                         {isOpen ? "▾" : "▸"} {w.kind}/{w.name}
                         {w.partial && <span className="badge" title="agent 가 이 종류의 스펙을 수집하지 않아 Pod 기준으로 추정"> Pod 기준</span>}
+                        {w.gitops_manager && <span className="badge gitops" title="GitOps 관리 리소스 — 자동 적용 안 함, git 에서 수정">{w.gitops_manager}</span>}
                       </td>
                       <td className={w.replicas_ready < w.replicas_desired ? "txt-warn" : ""}>
                         {w.replicas_ready}/{w.replicas_desired}
@@ -1055,12 +1056,17 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
             <div className="issue-title"><span className={`badge ${i.severity}`}>{i.rule_id}</span> {i.title}</div>
             <div className="issue-detail">{i.detail}</div>
             <div className="issue-foot">
-              <span className={`disp ${i.disposition}`}>{i.has_action ? i.disposition : "진단 전용"}</span>
+              <span className={`disp ${i.disposition}`}>
+                {!i.has_action ? "진단 전용" : i.disposition === "flapping" ? "반복 적용 차단" : i.disposition}
+              </span>
               {isAdmin && i.has_action && (
                 <>
                   <button onClick={() => onApply(i.fingerprint, true)}>Dry-run</button>
                   <button className="primary" onClick={() => {
-                    if (confirm(`${w.kind}/${w.name} 에 '${i.rule_id}' 조치를 실제 적용할까요?`))
+                    const warn = w.gitops_manager
+                      ? `\n\n주의: ${w.gitops_manager} 가 관리하는 리소스라 적용해도 곧 되돌려집니다. git 매니페스트 수정을 권장합니다.`
+                      : "";
+                    if (confirm(`${w.kind}/${w.name} 에 '${i.rule_id}' 조치를 실제 적용할까요?${warn}`))
                       onApply(i.fingerprint, false);
                   }}>적용</button>
                 </>
@@ -1127,7 +1133,7 @@ function Panel(props: { title: string; wide?: boolean; children: React.ReactNode
 }
 
 function summarize(e: LiveEvent): string {
-  const keys = ["cluster_id", "namespace", "target", "action", "phase", "mode", "frozen", "issues", "pods", "error"];
+  const keys = ["cluster_id", "namespace", "target", "action", "phase", "mode", "frozen", "issues", "pods", "error", "rule_id", "recent_applies"];
   return keys
     .filter((k) => e[k] !== undefined && e[k] !== "")
     .map((k) => `${k}=${e[k]}`)
