@@ -50,8 +50,19 @@ class HubLink:
             await asyncio.sleep(delay + jitter)
             delay = min(delay * 2, s.reconnect_max_seconds)
 
+    def _collect(self) -> dict:
+        s = get_settings()
+        self._generation += 1
+        snap = collect_inventory(self.kube, s.cluster_id, self._generation)
+        snap["metrics_available"] = self.kube.metrics_available
+        snap["type"] = "telemetry"
+        return snap
+
     async def _session(self) -> None:
         s = get_settings()
+        # hello 의 metrics_available 이 실제 수집 결과를 반영하도록 첫 수집을 먼저 수행
+        # (수집 전에는 항상 False 라 hub 접속 로그가 오해를 부름). 이 스냅샷은 첫 telemetry 로 재사용.
+        first = self._collect()
         async with websockets.connect(s.hub_url, ping_interval=20, ping_timeout=20) as ws:
             hello = {
                 "type": "hello",
@@ -65,15 +76,13 @@ class HubLink:
             ack = json.loads(await ws.recv())
             log.info("hub 접속 성공: %s", ack.get("message"))
 
-            await asyncio.gather(self._sender(ws), self._receiver(ws))
+            await asyncio.gather(self._sender(ws, first), self._receiver(ws))
 
-    async def _sender(self, ws) -> None:
+    async def _sender(self, ws, first: dict | None = None) -> None:
         s = get_settings()
         while True:
-            self._generation += 1
-            snap = collect_inventory(self.kube, s.cluster_id, self._generation)
-            snap["metrics_available"] = self.kube.metrics_available
-            snap["type"] = "telemetry"
+            snap = first if first is not None else self._collect()
+            first = None
             await ws.send(json.dumps(snap))
             _touch(s.heartbeat_file)  # liveness 하트비트
             log.debug("telemetry 전송 gen=%s pods=%s", self._generation, len(snap.get("pods", [])))

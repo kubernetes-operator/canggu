@@ -13,7 +13,7 @@ images:
   - name: registry.local.cloud:5000/canggu/hub
     newTag: "0.1.30"
   - name: registry.local.cloud:5000/canggu/agent
-    newTag: "0.1.15"
+    newTag: "0.1.16"
 
 # 시크릿(canggu-secrets)은 커밋하지 않는다. ArgoCD 동기화 전 1회 부트스트랩:
 #   kubectl -n canggu-system create secret generic canggu-secrets \
