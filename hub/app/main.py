@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="canggu hub", version="0.0.1", lifespan=lifespan)
+app = FastAPI(title="canggu hub", version=get_settings().hub_version, lifespan=lifespan)
 
 _settings = get_settings()
 app.add_middleware(
@@ -97,7 +97,7 @@ app.include_router(live.router)
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "version": get_settings().hub_version}
 
 
 # 빌드된 웹 SPA 정적 서빙 (API/WS 라우트 뒤에 마운트하여 우선순위 보장).

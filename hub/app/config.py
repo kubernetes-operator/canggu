@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # 기본은 zero-dependency 로컬 실행을 위한 sqlite. docker-compose 는 postgres 주입.
     database_url: str = "sqlite:///./canggu.db"
 
+    # 빌드 시 Dockerfile ARG VERSION → CANGGU_HUB_VERSION 으로 주입. 로컬 실행은 "dev".
+    hub_version: str = "dev"
+
     # agent 부트스트랩 토큰(데모용). 운영에서는 클러스터별 발급 + mTLS 로 대체.
     agent_shared_token: str = "dev-token"
 

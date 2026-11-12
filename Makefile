@@ -47,7 +47,7 @@ lint:
 
 # ── 컨테이너 이미지 / k8s 배포 ────────────────────────────────────────────────
 images:
-	docker build -f hub/Dockerfile -t $(REGISTRY)/canggu/hub:$(TAG) .
+	docker build -f hub/Dockerfile --build-arg VERSION=$(TAG) -t $(REGISTRY)/canggu/hub:$(TAG) .
 	docker build -f agent/Dockerfile --build-arg VERSION=$(AGENT_TAG) -t $(REGISTRY)/canggu/agent:$(AGENT_TAG) ./agent
 
 push:
