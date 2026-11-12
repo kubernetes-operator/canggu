@@ -11,6 +11,11 @@ from collections.abc import Callable
 from app.remediation import rules
 from app.schemas import Command, Issue, Mode, TelemetrySnapshot
 
+# 조치(patch) 가능한 종류 — agent RBAC(deployments, statefulsets patch)와 일치시킬 것.
+PATCHABLE_KINDS = {"Deployment", "StatefulSet"}
+# ACTIVE 모드 자동 적용 대상 종류. StatefulSet 은 롤링 재시작이 상태 서비스에 영향 → 수동 승인만.
+AUTO_APPLY_KINDS = {"Deployment"}
+
 # effective mode = min(cluster, namespace), OBSERVE < ACTIVE
 _MODE_ORDER = {"OBSERVE": 0, "ACTIVE": 1}
 
@@ -50,6 +55,10 @@ def evaluate(snapshot: TelemetrySnapshot, rightsize_factor: float) -> list[Issue
         for i in candidates:
             if i is not None:
                 i.target = i.target or f"{wl.kind}/{wl.name}"
+                if wl.kind not in PATCHABLE_KINDS and i.suggested_action is not None:
+                    # agent 에 patch 권한이 없는 종류(DaemonSet) → 진단 전용으로 강등
+                    i.suggested_action = None
+                    i.detail += " (DaemonSet 은 자동/원클릭 조정 대상이 아님 — 매니페스트/Helm 값에서 수정)"
                 issues.append(i)
 
     # 이벤트 기반 운영 튜닝 제안(워크로드 상관)
@@ -111,7 +120,7 @@ def plan_dispatch(
         if frozen or eff == "OBSERVE":
             issue.disposition = "suggested_only"
             continue
-        if not sa.auto_apply or sa.risk_tier == "high":
+        if not sa.auto_apply or sa.risk_tier == "high" or sa.target_kind not in AUTO_APPLY_KINDS:
             issue.disposition = "manual_required"
             continue
 

@@ -386,7 +386,7 @@ export default function App() {
                     <td className="mono">{c.usage_p95.cpu || "-"} / {c.requests.cpu || "unset"}</td>
                     <td className="mono">{c.usage_p95.memory || "-"} / {c.requests.memory || "unset"}</td>
                     <td>
-                      {isAdmin && (
+                      {isAdmin && w.kind !== "DaemonSet" && (
                         <button onClick={() => setEdit({
                           ns: w.namespace, kind: w.kind, name: w.name, container: c.name,
                           reqCpu: c.requests.cpu, reqMem: c.requests.memory,
@@ -1100,7 +1100,7 @@ function OpDetail({ w, isAdmin, onApply, onEdit }: {
                   {c.usage_p95.memory || "-"} / {c.requests.memory || "unset"} / {c.limits.memory || "-"}
                   {c.mem_ratio != null && <b className={c.mem_ratio > 1 ? "txt-warn" : ""}> ({pct(c.mem_ratio)})</b>}
                 </td>
-                <td>{isAdmin && <button onClick={() => onEdit(w, c)}>편집</button>}</td>
+                <td>{isAdmin && w.kind !== "DaemonSet" && <button onClick={() => onEdit(w, c)}>편집</button>}</td>
               </tr>
             ))}
           </tbody>

@@ -236,3 +236,31 @@ def test_frozen_blocks_dispatch():
     )
     assert commands == []
     assert issues[0].disposition == "suggested_only"
+
+
+def _kind_snap(kind: str) -> TelemetrySnapshot:
+    snap = _snap_with_underprovisioned()
+    snap.workloads[0].kind = kind
+    return snap
+
+
+def test_daemonset_issues_are_diagnostic_only():
+    from app.schemas import Pod
+
+    snap = _kind_snap("DaemonSet")
+    snap.pods = [Pod(namespace="team-a", name="api-x", phase="Running", restart_count=5,
+                     waiting_reason="CrashLoopBackOff", owner_kind="DaemonSet", owner_name="api")]
+    issues = engine.evaluate(snap, 1.5)
+    assert [i.rule_id for i in issues] == ["crashloop"]  # 조치형 규칙은 DaemonSet 미적용
+    assert all(i.suggested_action is None and i.target == "DaemonSet/api" for i in issues)
+
+
+def test_statefulset_never_auto_dispatched():
+    issues = engine.evaluate(_kind_snap("StatefulSet"), 1.5)
+    rs = _by_rule(issues, "resource-rightsize")
+    assert rs.suggested_action is not None
+    rs.suggested_action.auto_apply = True
+    _, cmds = engine.plan_dispatch(
+        issues, cluster_mode="ACTIVE", ns_mode_of=lambda ns: None, frozen=False, seq_start=0
+    )
+    assert cmds == [] and rs.disposition == "manual_required"

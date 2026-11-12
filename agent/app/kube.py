@@ -206,33 +206,26 @@ class KubeClient:
             self._metrics_available = True
 
         # 3) workloads (+ 컨테이너별 워크로드 내 최대 사용량 = per-replica 우측정렬 기준)
+        # Deployment·StatefulSet·DaemonSet (Job/CronJob 은 일회성이라 제외)
+        controllers = [
+            ("Deployment", apps.list_deployment_for_all_namespaces),
+            ("StatefulSet", apps.list_stateful_set_for_all_namespaces),
+            ("DaemonSet", apps.list_daemon_set_for_all_namespaces),
+        ]
         workloads = []
-        for d in apps.list_deployment_for_all_namespaces().items:
-            ns, name = d.metadata.namespace, d.metadata.name
-            owned_pods = pods_by_owner.get((ns, name), [])
-            containers = []
-            for c in (d.spec.template.spec.containers or []):
-                cpu_max, mem_max = _max_usage(metrics, ns, owned_pods, c.name)
-                containers.append({
-                    "name": c.name,
-                    "requests": _res(c.resources.requests if c.resources else None),
-                    "limits": _res(c.resources.limits if c.resources else None),
-                    "usage_p95": {"cpu": cpu_max, "memory": mem_max},  # Phase1: 순간최대(히스토리 p95는 Phase2)
-                })
-            pod_spec = d.spec.template.spec
-            has_spread = bool(pod_spec.topology_spread_constraints) or bool(
-                pod_spec.affinity and pod_spec.affinity.pod_anti_affinity
-            )
-            workloads.append({
-                "namespace": ns,
-                "kind": "Deployment",
-                "name": name,
-                "replicas_desired": d.spec.replicas or 0,
-                "replicas_ready": d.status.ready_replicas or 0,
-                "distinct_nodes": len(nodes_by_owner.get((ns, name), set())),
-                "has_spread_constraints": has_spread,
-                "containers": containers,
-            })
+        for kind, lister in controllers:
+            try:
+                items = lister().items
+            except Exception as e:  # noqa: BLE001 — 한 종류 실패가 전체 수집을 막지 않게
+                log.warning("%s 수집 실패: %s", kind, e)
+                continue
+            for obj in items:
+                ns, name = obj.metadata.namespace, obj.metadata.name
+                workloads.append(_workload_entry(
+                    kind, obj, metrics,
+                    pods_by_owner.get((ns, name), []),
+                    len(nodes_by_owner.get((ns, name), set())),
+                ))
 
         # 4) services + endpoints 헬스
         services = self._collect_services()
@@ -724,6 +717,45 @@ def _mem_to_bytes(q: str) -> int:
         return int(float(q))
     except ValueError:
         return -1
+
+
+def _replica_counts(kind: str, obj) -> tuple[int, int]:
+    """(desired, ready). DaemonSet 은 스케줄 대상 노드 수 기준."""
+    st = obj.status
+    if kind == "DaemonSet":
+        return ((st.desired_number_scheduled or 0) if st else 0,
+                (st.number_ready or 0) if st else 0)
+    desired = obj.spec.replicas if obj.spec.replicas is not None else 1
+    return (desired, (st.ready_replicas or 0) if st else 0)
+
+
+def _workload_entry(kind: str, obj, metrics: dict, owned_pods: list[str], distinct_nodes: int) -> dict:
+    """컨트롤러 객체 → 텔레메트리 workload(컨테이너별 워크로드 내 최대 사용량 포함)."""
+    ns, name = obj.metadata.namespace, obj.metadata.name
+    pod_spec = obj.spec.template.spec
+    containers = []
+    for c in (pod_spec.containers or []):
+        cpu_max, mem_max = _max_usage(metrics, ns, owned_pods, c.name)
+        containers.append({
+            "name": c.name,
+            "requests": _res(c.resources.requests if c.resources else None),
+            "limits": _res(c.resources.limits if c.resources else None),
+            "usage_p95": {"cpu": cpu_max, "memory": mem_max},
+        })
+    has_spread = bool(pod_spec.topology_spread_constraints) or bool(
+        pod_spec.affinity and pod_spec.affinity.pod_anti_affinity
+    )
+    desired, ready = _replica_counts(kind, obj)
+    return {
+        "namespace": ns,
+        "kind": kind,
+        "name": name,
+        "replicas_desired": desired,
+        "replicas_ready": ready,
+        "distinct_nodes": distinct_nodes,
+        "has_spread_constraints": has_spread,
+        "containers": containers,
+    }
 
 
 def _max_usage(metrics: dict, ns: str, pod_names: list[str], container: str) -> tuple[str, str]:
