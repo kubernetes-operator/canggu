@@ -2,6 +2,7 @@
 
 REGISTRY ?= registry.local.cloud:5000
 TAG ?= 0.1.1
+AGENT_TAG ?= $(TAG)
 
 help:
 	@echo "canggu 개발 타깃:"
@@ -47,11 +48,11 @@ lint:
 # ── 컨테이너 이미지 / k8s 배포 ────────────────────────────────────────────────
 images:
 	docker build -f hub/Dockerfile -t $(REGISTRY)/canggu/hub:$(TAG) .
-	docker build -f agent/Dockerfile -t $(REGISTRY)/canggu/agent:$(TAG) ./agent
+	docker build -f agent/Dockerfile --build-arg VERSION=$(AGENT_TAG) -t $(REGISTRY)/canggu/agent:$(AGENT_TAG) ./agent
 
 push:
 	docker push $(REGISTRY)/canggu/hub:$(TAG)
-	docker push $(REGISTRY)/canggu/agent:$(TAG)
+	docker push $(REGISTRY)/canggu/agent:$(AGENT_TAG)
 
 deploy:
 	kubectl apply -k deploy/k8s

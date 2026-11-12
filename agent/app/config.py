@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     hub_url: str = "ws://localhost:8000/agentlink/ws"
     cluster_id: str = "demo"
     cluster_token: str = "dev-token"     # hub 부트스트랩 토큰 (운영은 mTLS/단기토큰)
-    agent_version: str = "0.0.1"
+    # 빌드 시 Dockerfile ARG VERSION → CANGGU_AGENT_VERSION 으로 주입. 로컬 실행은 "dev".
+    agent_version: str = "dev"
 
     # 클러스터 없이 합성 데이터로 동작 (개발/데모). 실제 자격증명 불필요.
     mock: bool = False

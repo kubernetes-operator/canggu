@@ -6,6 +6,8 @@
 
 - ArgoCD Application: `deploy/argocd/application.yaml` → `kubectl apply -f`. `deploy/k8s`(kustomize) 추적, 자동 동기화(prune+selfHeal).
 - **버전 업**: 이미지 빌드/푸시(`make images push`) 후 `deploy/k8s/kustomization.yaml` 의 `images.newTag` 수정 → 커밋/푸시 → ArgoCD 자동 배포.
+  - hub 와 agent 태그가 다르면 `make images push TAG=<hub> AGENT_TAG=<agent>`.
+  - agent 이미지는 `--build-arg VERSION=<태그>` 로 빌드해야 hub 에 실제 버전이 보고된다(생략 시 `dev`).
 - 시크릿(`canggu-secrets`)은 git 밖 1회 부트스트랩. 직접 `kubectl`/이미지 수정은 selfHeal 로 되돌려지므로 git 을 통해 변경.
 
 ## 로그인 / 사용자
