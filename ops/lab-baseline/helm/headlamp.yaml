@@ -1,0 +1,3 @@
+# release: headlamp (ns headlamp), chart headlamp-0.42.0
+resources:
+  requests: {cpu: 2m, memory: 68Mi}

@@ -1,0 +1,39 @@
+# ArgoCD Application — canggu 를 GitOps 로 배포.
+#
+# 전제(1회):
+#   1) canggu-secrets 부트스트랩 (커밋 안 함):
+#      kubectl create namespace canggu-system
+#      kubectl -n canggu-system create secret generic canggu-secrets \
+#        --from-literal=agentToken="$(openssl rand -hex 24)" \
+#        --from-literal=jwtSecret="$(openssl rand -hex 32)" \
+#        --from-literal=adminPassword="$(openssl rand -base64 18)"
+#   2) 이미지 빌드/푸시: make images push  (registry.local.cloud:5000)
+#
+# 적용: kubectl apply -f deploy/argocd/application.yaml
+# 이후 버전 업은 deploy/k8s/kustomization.yaml 의 images.newTag 수정 → 커밋/푸시 → ArgoCD 자동 동기화.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: canggu
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kubernetes-operator/canggu.git
+    targetRevision: canggu-platform     # main 머지 후 main 으로 변경 권장
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: canggu-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false           # 00-namespace.yaml 이 생성
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

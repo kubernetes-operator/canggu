@@ -1,0 +1,15 @@
+# release: cilium (ns kube-system), chart cilium-1.18.6
+operator:
+  resources:
+    requests: {cpu: 6m, memory: 192Mi}
+hubble:
+  relay:
+    resources:
+      requests: {cpu: 18m, memory: 140Mi}
+  ui:
+    backend:
+      resources:
+        requests: {cpu: 61m, memory: 1176Mi}
+    frontend:
+      resources:
+        requests: {cpu: 1m, memory: 22Mi}

@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-applicationset-controller
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+      - name: argocd-applicationset-controller
+        resources:
+          requests:
+            cpu: 2m
+            memory: 26Mi

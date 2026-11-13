@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*_pb2.py
+*_pb2_grpc.py
+*_pb2.pyi
+
+# Node / web
+node_modules/
+web/dist/
+*.tsbuildinfo
+*.local
+
+# Env / secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.kubeconfig
+kubeconfig*
+*.pem
+*.key
+*.crt
+
+# Local data
+*.sqlite3
+*.db
+data/
+
+# Editor
+.idea/
+.vscode/
+.DS_Store

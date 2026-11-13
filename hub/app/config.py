@@ -1,0 +1,58 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """hub 설정. 환경변수 CANGGU_* 로 오버라이드. 자격증명/시크릿은 커밋 금지."""
+
+    model_config = SettingsConfigDict(env_prefix="CANGGU_", env_file=".env", extra="ignore")
+
+    # 기본은 zero-dependency 로컬 실행을 위한 sqlite. docker-compose 는 postgres 주입.
+    database_url: str = "sqlite:///./canggu.db"
+
+    # 빌드 시 Dockerfile ARG VERSION → CANGGU_HUB_VERSION 으로 주입. 로컬 실행은 "dev".
+    hub_version: str = "dev"
+
+    # agent 부트스트랩 토큰(데모용). 운영에서는 클러스터별 발급 + mTLS 로 대체.
+    agent_shared_token: str = "dev-token"
+
+    # 자동조정 엔진 기본값
+    rightsize_factor: float = 1.5           # usage_p95 * factor > requests 이면 우측정렬
+    remediation_default_frozen: bool = False
+    # 동일 이슈(fingerprint) 자동 재적용 억제 기간(안티플래핑).
+    remediation_cooldown_seconds: float = 300.0
+    # 플래핑 차단: 창(초) 안에 같은 대상·규칙 자동 적용이 threshold 회 이상이면 자동 적용 중단.
+    # (DB 감사 원장 기준이라 hub 재시작에도 유지). threshold 0 이면 비활성.
+    remediation_flap_window_seconds: float = 3600.0
+    remediation_flap_threshold: int = 3
+
+    # Operating 뷰/요약에서 상태 판정·경고 수 집계에서 제외할 무해한 이벤트 reason(콤마 구분).
+    # DNSConfigForming: 노드 resolv.conf nameserver 초과 경고 — 워크로드 문제가 아님.
+    event_noise_reasons: str = "DNSConfigForming"
+
+    # 이 시간(초) 안에 restartCount 가 증가한 Pod 만 '재기동 문제'로 본다(누적값 무시).
+    restart_recent_window_seconds: float = 3600.0
+
+    cors_origins: str = "http://localhost:5173"
+
+    # 빌드된 웹 SPA(dist) 경로. 비어있으면 정적 서빙 비활성(로컬 dev 는 vite 사용).
+    # 컨테이너에서는 /app/web_dist 로 설정.
+    web_dist: str = ""
+
+    # 인증(Phase 3). 시크릿은 커밋 금지 — 배포 시 Secret 으로 주입.
+    jwt_secret: str = "dev-insecure-secret-change-me"
+    session_ttl_seconds: int = 8 * 3600
+    # 부트스트랩 admin. 최초 기동 시 DB 에 없으면 생성.
+    admin_user: str = "admin"
+    admin_password: str = "admin"  # 운영은 Secret 주입(랜덤). dev 기본값.
+    # 복구용: true 로 기동하면 admin 비밀번호를 admin_password(Secret) 값으로 재동기화.
+    # 사용 후 반드시 false 로 되돌릴 것(매 기동마다 재설정되어 사용자 변경이 덮어써짐).
+    admin_reset: bool = False
+    # true 면 인증 미들웨어 활성(운영). dev 로컬은 false 로 열어둘 수 있음.
+    auth_enabled: bool = True
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

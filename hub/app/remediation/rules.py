@@ -1,0 +1,350 @@
+"""자동조정 규칙 정의.
+
+각 detector 는 텔레메트리 조각을 받아 Issue|None 을 반환한다.
+Phase 0 는 규칙 #3(resource-rightsize)만 구현. 나머지는 로드맵상 스텁으로 표시.
+전체 규칙 명세는 docs/remediation-rules.md.
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+from app.remediation.quantity import (
+    format_cpu,
+    format_mem,
+    parse_cpu,
+    parse_mem,
+)
+from app.schemas import Event, Issue, Pod, SuggestedAction, Workload
+
+# 구현된 규칙 카탈로그(웹 규칙 설정 UI + 기본값 시딩용).
+RULE_CATALOG = [
+    {"id": "resource-rightsize", "title": "리소스 requests 우측정렬", "risk": "low", "default_auto": True},
+    {"id": "cpu-throttling", "title": "CPU limit 근접(throttling 의심)", "risk": "med", "default_auto": True},
+    {"id": "oom-killed", "title": "OOMKilled → 메모리 limit 증가", "risk": "med", "default_auto": True},
+    {"id": "crashloop", "title": "CrashLoopBackOff(진단 전용)", "risk": "high", "default_auto": False},
+    {"id": "pod-spread", "title": "노드 분산 강제(topologySpread)", "risk": "med", "default_auto": True},
+    {"id": "unschedulable", "title": "스케줄 불가(리소스 부족 등, 진단)", "risk": "warn", "default_auto": False},
+    {"id": "image-pull-backoff", "title": "ImagePullBackOff(이미지/인증, 진단)", "risk": "warn", "default_auto": False},
+    {"id": "event-failed-scheduling", "title": "스케줄 실패 이벤트(노드 리소스 튜닝)", "risk": "warn", "default_auto": False},
+    {"id": "event-probe-unhealthy", "title": "프로브 실패 이벤트(probe 튜닝)", "risk": "warn", "default_auto": False},
+    {"id": "event-volume-failed", "title": "볼륨 마운트 실패 이벤트(스토리지 튜닝)", "risk": "warn", "default_auto": False},
+]
+
+# 이벤트 reason → 운영 튜닝 규칙(진단/제안). 자동 조치 없음.
+EVENT_RULES = {
+    "FailedScheduling": ("event-failed-scheduling", "스케줄 실패",
+                         "노드 리소스 부족 가능 — requests 축소 또는 노드 증설/테인트·셀렉터 검토"),
+    "Unhealthy": ("event-probe-unhealthy", "프로브 실패",
+                  "readiness/liveness 프로브 실패 — failureThreshold·initialDelaySeconds·timeoutSeconds 상향 검토"),
+    "FailedMount": ("event-volume-failed", "볼륨 마운트 실패",
+                    "PVC 바인딩/StorageClass/노드 접근 확인"),
+    "FailedAttachVolume": ("event-volume-failed", "볼륨 연결 실패",
+                           "PVC 바인딩/StorageClass/노드 접근 확인"),
+}
+
+HEADROOM = 1.2       # 우측정렬 시 p95 위에 얹는 여유
+OOM_BUMP = 1.5       # OOM 시 메모리 limit 증가 배수
+CPU_LIMIT_BUMP = 1.5  # CPU limit 근접 시 증가 배수
+CPU_LIMIT_NEAR = 0.9  # usage 가 limit 의 이 비율 이상이면 throttling 의심
+
+
+def _fingerprint(*parts: str) -> str:
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
+
+
+def detect_rightsize(
+    cluster_id: str, wl: Workload, factor: float
+) -> Issue | None:
+    """규칙 #3: usage_p95 가 requests 를 크게 초과하거나 requests 미설정 → 우측정렬 제안.
+
+    metrics(usage_p95) 가 없으면 안전상 조치하지 않는다(fail-safe). limit 미설정만으로는
+    성능부족으로 단정하지 않는다.
+    """
+    if wl.kind not in ("Deployment", "StatefulSet"):
+        return None
+
+    changed: dict[str, dict[str, str]] = {}
+    evidence: dict[str, dict] = {}
+
+    for c in wl.containers:
+        up_cpu = parse_cpu(c.usage_p95.cpu)
+        up_mem = parse_mem(c.usage_p95.memory)
+        if up_cpu is None and up_mem is None:
+            continue  # 메트릭 없음 → 스킵 (fail-safe)
+
+        req_cpu = parse_cpu(c.requests.cpu)
+        req_mem = parse_mem(c.requests.memory)
+        new_req: dict[str, str] = {}
+        ev: dict[str, str] = {}
+
+        # CPU: requests 미설정이거나 p95 가 requests*factor 초과
+        if up_cpu is not None and (req_cpu is None or up_cpu > req_cpu * factor):
+            new_req["cpu"] = format_cpu(up_cpu * HEADROOM)
+            ev["cpu"] = f"req={c.requests.cpu or 'unset'} p95={c.usage_p95.cpu} -> {new_req['cpu']}"
+
+        # Memory
+        if up_mem is not None and (req_mem is None or up_mem > req_mem * factor):
+            new_req["memory"] = format_mem(int(up_mem * HEADROOM))
+            ev["memory"] = (
+                f"req={c.requests.memory or 'unset'} p95={c.usage_p95.memory} -> {new_req['memory']}"
+            )
+
+        if new_req:
+            changed[c.name] = new_req
+            evidence[c.name] = ev
+
+    if not changed:
+        return None
+
+    patch = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [
+                        {"name": cname, "resources": {"requests": req}}
+                        for cname, req in changed.items()
+                    ]
+                }
+            }
+        }
+    }
+
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "rightsize"),
+        rule_id="resource-rightsize",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 리소스 requests 가 실사용 대비 부족",
+        detail="관측된 p95 사용량이 설정된 requests 를 초과합니다. requests 우측정렬을 제안합니다.",
+        evidence=evidence,
+        suggested_action=SuggestedAction(
+            action_type="rightsize",
+            target_kind=wl.kind,
+            target_name=wl.name,
+            namespace=wl.namespace,
+            patch=patch,
+            patch_type="strategic",
+            risk_tier="low",
+            auto_apply=True,
+        ),
+    )
+
+
+def _mem_patch(wl: Workload, changed: dict[str, str]) -> dict:
+    return {
+        "spec": {"template": {"spec": {"containers": [
+            {"name": c, "resources": {"limits": {"memory": m}}} for c, m in changed.items()
+        ]}}}
+    }
+
+
+def detect_oom_killed(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #1: 소유 pod 컨테이너가 OOMKilled → 메모리 limit 단계 증가(+50%)."""
+    if wl.kind not in ("Deployment", "StatefulSet"):
+        return None
+    oomed = [p for p in pods if p.last_terminated_reason == "OOMKilled"]
+    if not oomed:
+        return None
+
+    changed: dict[str, str] = {}
+    for c in wl.containers:
+        lim = parse_mem(c.limits.memory)
+        if lim is not None:
+            changed[c.name] = format_mem(int(lim * OOM_BUMP))
+        else:
+            up = parse_mem(c.usage_p95.memory)
+            if up is not None:
+                changed[c.name] = format_mem(int(up * 2))
+    if not changed:
+        return None
+
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "oom"),
+        rule_id="oom-killed",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="critical",
+        title=f"{wl.kind}/{wl.name}: OOMKilled 발생 — 메모리 부족",
+        detail=f"{len(oomed)}개 pod 가 메모리 한계로 종료되었습니다. 메모리 limit 상향을 제안합니다.",
+        evidence={"oom_pods": [p.name for p in oomed[:5]], "new_limits": changed},
+        suggested_action=SuggestedAction(
+            action_type="bump-memory-limit", target_kind=wl.kind, target_name=wl.name,
+            namespace=wl.namespace, patch=_mem_patch(wl, changed), patch_type="strategic",
+            risk_tier="med", auto_apply=True,
+        ),
+    )
+
+
+def detect_cpu_at_limit(cluster_id: str, wl: Workload) -> Issue | None:
+    """규칙 #2(프록시): usage 가 CPU limit 에 근접 → throttling 의심, limit 상향.
+
+    정확한 throttling 은 Prometheus(cfs_throttled)가 필요(향후). 여기서는 metrics-server
+    usage 대비 limit 근접으로 근사한다.
+    """
+    if wl.kind not in ("Deployment", "StatefulSet"):
+        return None
+    changed: dict[str, str] = {}
+    evidence: dict[str, str] = {}
+    for c in wl.containers:
+        lim = parse_cpu(c.limits.cpu)
+        use = parse_cpu(c.usage_p95.cpu)
+        if lim is not None and use is not None and use >= lim * CPU_LIMIT_NEAR:
+            changed[c.name] = format_cpu(lim * CPU_LIMIT_BUMP)
+            evidence[c.name] = f"usage={c.usage_p95.cpu} limit={c.limits.cpu} -> {changed[c.name]}"
+    if not changed:
+        return None
+
+    patch = {"spec": {"template": {"spec": {"containers": [
+        {"name": c, "resources": {"limits": {"cpu": v}}} for c, v in changed.items()
+    ]}}}}
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "cpu-limit"),
+        rule_id="cpu-throttling",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: CPU 사용량이 limit 에 근접(throttling 의심)",
+        detail="관측 사용량이 CPU limit 에 근접합니다. limit 상향을 제안합니다(프록시 탐지).",
+        evidence=evidence,
+        suggested_action=SuggestedAction(
+            action_type="bump-cpu-limit", target_kind=wl.kind, target_name=wl.name,
+            namespace=wl.namespace, patch=patch, patch_type="strategic",
+            risk_tier="med", auto_apply=True,
+        ),
+    )
+
+
+def detect_crashloop(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #4: CrashLoopBackOff → 진단만(무조건 재시작 금지, high-risk). 자동 조치 없음."""
+    looping = [p for p in pods if p.waiting_reason == "CrashLoopBackOff"]
+    if not looping:
+        return None
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind or "Pod", wl.name, "crashloop"),
+        rule_id="crashloop",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="critical",
+        title=f"{wl.kind}/{wl.name}: CrashLoopBackOff",
+        detail="컨테이너가 반복 재시작 중입니다. 로그/이벤트 확인 필요(자동 조치 없음, 수동 대응).",
+        evidence={"pods": [{"name": p.name, "restarts": p.restart_count} for p in looping[:5]]},
+        suggested_action=None,  # 진단 전용
+    )
+
+
+def detect_pod_spread(cluster_id: str, wl: Workload) -> Issue | None:
+    """규칙 #5(기능8): 파드가 2개 미만 노드에 몰림 → topologySpreadConstraints 주입 제안.
+
+    단일 replica·기존 분산제약 보유·비대상 kind 는 제외(덮어쓰기 금지). 실제 labelSelector 는
+    agent 가 적용 시 live selector 로 채운다.
+    """
+    if wl.kind not in ("Deployment", "StatefulSet"):
+        return None
+    if wl.replicas_desired < 2:
+        return None
+    if wl.has_spread_constraints:
+        return None
+    if wl.distinct_nodes >= 2:
+        return None
+
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "spread"),
+        rule_id="pod-spread",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 파드가 {wl.distinct_nodes}개 노드에만 배치(≥2 권장)",
+        detail=(f"replicas={wl.replicas_desired} 인데 {wl.distinct_nodes}개 노드에 몰려 있습니다. "
+                "노드 장애 시 가용성 위험 — topologySpreadConstraints 주입을 제안합니다."),
+        evidence={"replicas_desired": wl.replicas_desired, "distinct_nodes": wl.distinct_nodes},
+        suggested_action=SuggestedAction(
+            action_type="inject-spread",
+            target_kind=wl.kind,
+            target_name=wl.name,
+            namespace=wl.namespace,
+            # labelSelector 는 agent 가 live selector 로 채움. 여기선 정책 파라미터만.
+            patch={"topologyKey": "kubernetes.io/hostname", "maxSkew": 1,
+                   "whenUnsatisfiable": "ScheduleAnyway"},
+            patch_type="strategic",
+            risk_tier="med",
+            auto_apply=True,
+        ),
+    )
+
+
+def detect_unschedulable(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #6: 소유 pod 가 스케줄 불가(Unschedulable) → 진단(자동 조치 없음)."""
+    stuck = [p for p in pods if p.unschedulable]
+    if not stuck:
+        return None
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "unsched"),
+        rule_id="unschedulable",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 스케줄 불가 파드 {len(stuck)}개",
+        detail="노드 리소스 부족/제약으로 스케줄되지 않는 파드가 있습니다(진단). requests 축소 또는 노드 증설 검토.",
+        evidence={"pods": [p.name for p in stuck[:5]]},
+        suggested_action=None,
+    )
+
+
+def detect_image_pull_backoff(cluster_id: str, wl: Workload, pods: list[Pod]) -> Issue | None:
+    """규칙 #8: ImagePullBackOff/ErrImagePull → 진단(이미지 태그/레지스트리 인증)."""
+    bad = [p for p in pods if p.waiting_reason in ("ImagePullBackOff", "ErrImagePull")]
+    if not bad:
+        return None
+    return Issue(
+        fingerprint=_fingerprint(cluster_id, wl.namespace, wl.kind, wl.name, "imagepull"),
+        rule_id="image-pull-backoff",
+        cluster_id=cluster_id,
+        namespace=wl.namespace,
+        severity="warn",
+        title=f"{wl.kind}/{wl.name}: 이미지 pull 실패 {len(bad)}개",
+        detail="이미지 태그 오류 또는 레지스트리 인증 문제로 보입니다(진단).",
+        evidence={"pods": [p.name for p in bad[:5]]},
+        suggested_action=None,
+    )
+
+
+def detect_events(
+    cluster_id: str, events: list[Event], pod_owner: dict[tuple[str, str], str]
+) -> list[Issue]:
+    """이벤트 reason 을 워크로드와 상관시켜 운영 튜닝 제안(진단) 생성.
+
+    pod_owner: (namespace, pod_name) -> "Kind/Name" 소유 워크로드. 없으면 이벤트 대상 그대로.
+    동일 (ns, rule, target) 이벤트는 하나의 이슈로 집계.
+    """
+    groups: dict[tuple[str, str, str], dict] = {}
+    for e in events:
+        spec = EVENT_RULES.get(e.reason)
+        if spec is None:
+            continue
+        rule_id, title, hint = spec
+        target = pod_owner.get((e.namespace, e.involved_name)) or \
+            f"{e.involved_kind}/{e.involved_name}"
+        key = (e.namespace, rule_id, target)
+        g = groups.setdefault(
+            key, {"count": 0, "objs": set(), "rule_id": rule_id, "title": title, "hint": hint}
+        )
+        g["count"] += e.count
+        g["objs"].add(e.involved_name)
+
+    issues: list[Issue] = []
+    for (ns, rule_id, target), g in groups.items():
+        issues.append(Issue(
+            fingerprint=_fingerprint(cluster_id, ns, rule_id, target),
+            rule_id=rule_id,
+            cluster_id=cluster_id,
+            namespace=ns,
+            target=target,
+            severity="warn",
+            title=f"{target}: {g['title']} (×{g['count']})",
+            detail=f"{g['hint']} (대상 {len(g['objs'])}개)",
+            evidence={"objects": sorted(g["objs"])[:5], "count": g["count"]},
+            suggested_action=None,  # 튜닝 제안(진단) — 자동 조치 없음
+        ))
+    return issues

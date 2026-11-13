@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-dex-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+      - name: dex
+        resources:
+          requests:
+            cpu: 2m
+            memory: 99Mi

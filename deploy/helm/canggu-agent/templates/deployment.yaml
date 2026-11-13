@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-agent
+  labels:
+    app.kubernetes.io/name: canggu-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: canggu-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: canggu-agent
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CANGGU_CLUSTER_ID
+              value: {{ .Values.clusterId | quote }}
+            - name: CANGGU_HUB_URL
+              value: {{ .Values.hub.url | quote }}
+            - name: CANGGU_MOCK
+              value: {{ .Values.mock | quote }}
+            - name: CANGGU_CLUSTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.hub.existingSecret }}
+                  key: clusterToken
+          resources: {{ toYaml .Values.resources | nindent 12 }}
