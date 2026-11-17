@@ -5,9 +5,10 @@
 ## 배포 (GitOps / ArgoCD)
 
 - ArgoCD Application: `deploy/argocd/application.yaml` → `kubectl apply -f`. `deploy/k8s`(kustomize) 추적, 자동 동기화(prune+selfHeal).
-- **버전 업**: 이미지 빌드/푸시(`make images push`) 후 `deploy/k8s/kustomization.yaml` 의 `images.newTag` 수정 → 커밋/푸시 → ArgoCD 자동 배포.
-  - hub 와 agent 태그가 다르면 `make images push TAG=<hub> AGENT_TAG=<agent>`.
-  - hub·agent 이미지는 `--build-arg VERSION=<태그>` 로 빌드한다(생략 시 `dev`). agent 는 이 값을 hub 에 보고하고, hub 는 `/healthz` 의 `version` 으로 노출한다.
+- **버전 업**: `deploy/k8s/kustomization.yaml` 의 `images.newTag` 수정 → `make images push` → 커밋/푸시 → ArgoCD 자동 배포.
+  - Makefile 의 `TAG`/`AGENT_TAG` 기본값은 kustomization 의 newTag 에서 읽는다 → 배포 태그 = 이미지 태그 = 표시 버전.
+  - 이미지는 `--build-arg VERSION=<태그> --build-arg REVISION=<git 커밋>` 으로 빌드(Makefile 이 자동 전달, 생략 시 `dev`). agent 는 버전을 hub 에 보고하고, hub 는 `/healthz` 에 `version`·`revision` 을 노출한다. 커밋되지 않은 변경이 있으면 revision 에 `-dirty`.
+  - 외부 도구(web-standard `release-web.py`)는 기존 hub 이미지 위에 웹 결과물만 덮어 커밋 해시 태그(예: `293ff9c2f081`)로 배포한다. 이때 `/healthz` 의 version 은 바탕 hub 버전이다. 다음 정식 릴리스에서 semver 태그로 복귀.
 - 시크릿(`canggu-secrets`)은 git 밖 1회 부트스트랩. 직접 `kubectl`/이미지 수정은 selfHeal 로 되돌려지므로 git 을 통해 변경.
 
 ## 로그인 / 사용자
@@ -21,11 +22,17 @@
     - role: `admin`(변경 가능) | `viewer`(읽기)
     - scope_type=`cluster`(scope_ref="" 전체 / "<cluster>" 특정) | `namespace`(scope_ref="<cluster>/<ns>")
   - `PATCH /api/auth/users/{username}`(비번/role/scope 변경), `DELETE`(삭제). 자기 자신·마지막 admin 삭제/강등 차단.
+- **개인 계정 사용 권장**: 모드 변경 이력은 로그인 계정으로 기록된다. 공용 `admin` 으로 바꾸면 누가 바꿨는지 알 수 없으므로 사람마다 개인 admin/viewer 계정을 만들어 쓴다. 공용 `admin` 은 복구·계정 관리용으로만 둔다.
+  - 기본 설정(`CANGGU_MODE_ACTIVE_REQUIRE_PERSONAL=true`)에서는 공용 `admin` 계정으로 ACTIVE 전환이 거부된다(403). OBSERVE 로 끄는 것은 허용.
 - **본인 비밀번호 변경**(모든 로그인 사용자): 헤더 "비밀번호 변경" 또는 `POST /api/auth/change-password` `{old_password,new_password}`(현재 비번 확인, 6자 이상).
 
 ## 자동조정 모드 (관여 제어)
 
 - 클러스터/네임스페이스별 **OBSERVE**(제안만) ↔ **ACTIVE**(자동 적용). 유효 모드 = min(cluster, ns).
+- **ACTIVE 안전장치**:
+  - 전환 시 웹에서 확인창(드리프트 경고), live 피드 `mode_changed` 에 변경자·자동 복귀 시각, hub 로그 WARNING.
+  - **자동 복귀**: ACTIVE 는 `CANGGU_MODE_ACTIVE_MAX_SECONDS`(기본 3600, 0=끔) 뒤 OBSERVE 로 자동 복귀(점검 주기 `CANGGU_MODE_EXPIRY_CHECK_SECONDS`, 기본 60). 변경자 `system:auto-revert` 로 이력에 남는다. 계속 ACTIVE 가 필요하면 다시 켠다(기준 시각 갱신).
+  - **모드 변경 이력**: 웹 "모드 변경 이력" 패널 또는 `GET /api/clusters/{id}/mode-events`(클러스터 범위 admin) — 누가·언제·무엇을, 현재 ACTIVE 범위와 복귀 예정 시각.
 - 전역 **freeze**: 모든 자동조정 즉시 중단(kill-switch).
 - **규칙 설정**("자동조정 규칙 설정" 패널): 규칙별 활성/비활성 + auto_apply(기본/항상자동/항상수동).
 - 동일 이슈는 쿨다운(기본 300s) 동안 재적용 억제.

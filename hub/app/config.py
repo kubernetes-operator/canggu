@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     # 빌드 시 Dockerfile ARG VERSION → CANGGU_HUB_VERSION 으로 주입. 로컬 실행은 "dev".
     hub_version: str = "dev"
+    # 빌드한 git 커밋(Dockerfile ARG REVISION → CANGGU_HUB_REVISION). 이미지 태그가 해시여도 출처를 확인 가능.
+    hub_revision: str = ""
 
     # agent 부트스트랩 토큰(데모용). 운영에서는 클러스터별 발급 + mTLS 로 대체.
     agent_shared_token: str = "dev-token"
@@ -51,6 +53,13 @@ class Settings(BaseSettings):
     admin_reset: bool = False
     # true 면 인증 미들웨어 활성(운영). dev 로컬은 false 로 열어둘 수 있음.
     auth_enabled: bool = True
+
+    # ACTIVE 모드 안전장치 (2026-11 자동조정 되돌림 루프 사고 재발 방지).
+    # ACTIVE 는 이 시간(초)이 지나면 자동으로 OBSERVE 로 복귀. 0 이면 자동 복귀 끔.
+    mode_active_max_seconds: int = 3600
+    mode_expiry_check_seconds: float = 60.0
+    # true 면 공용 부트스트랩 admin(admin_user) 계정으로는 ACTIVE 전환 불가 → 개인 계정 사용 강제(누가 켰는지 추적).
+    mode_active_require_personal: bool = True
 
 
 @lru_cache

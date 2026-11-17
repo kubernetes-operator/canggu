@@ -9,14 +9,19 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 
 from app.agentlink.manager import hub
+from app.config import get_settings
 from app.core import auth, scope
 from app.db import crud
 from app.schemas import Mode
+
+import logging
+
+log = logging.getLogger("canggu.clusters")
 
 STALE_AFTER_SECONDS = 45  # last_seen 이 이보다 오래되면 데이터 stale 로 표시
 
@@ -27,6 +32,26 @@ class ModeBody(BaseModel):
     mode: Mode
 
 
+def _active_until(since: datetime | None) -> str | None:
+    """ACTIVE 자동 복귀 예정 시각(ISO, UTC). 자동 복귀가 꺼져 있으면 None."""
+    max_s = get_settings().mode_active_max_seconds
+    if max_s <= 0:
+        return None
+    base = since or datetime.now(timezone.utc).replace(tzinfo=None)
+    return (base + timedelta(seconds=max_s)).isoformat() + "Z"
+
+
+def _guard_active(p: auth.Principal, mode: str) -> None:
+    """공용 부트스트랩 admin 으로 ACTIVE 전환 금지(누가 켰는지 추적할 수 있도록 개인 계정 강제)."""
+    s = get_settings()
+    if mode == "ACTIVE" and s.mode_active_require_personal and p.username == s.admin_user:
+        raise HTTPException(
+            403,
+            "공용 admin 계정으로는 자동조정(ACTIVE)을 켤 수 없습니다. "
+            "개인 admin 계정으로 로그인해 주세요(웹 사용자 관리에서 생성).",
+        )
+
+
 class FreezeBody(BaseModel):
     frozen: bool
 
@@ -34,6 +59,11 @@ class FreezeBody(BaseModel):
 @router.get("")
 async def list_clusters(p: auth.Principal = Depends(auth.require_user)) -> list[dict]:
     clusters = await run_in_threadpool(crud.list_clusters)
+    active_until = {
+        a["cluster_id"]: _active_until(a["since"])
+        for a in await run_in_threadpool(crud.active_scopes)
+        if not a["namespace"]
+    }
     out = []
     for c in clusters:
         if not scope.cluster_allowed(p, c.id):
@@ -63,6 +93,7 @@ async def list_clusters(p: auth.Principal = Depends(auth.require_user)) -> list[
                 "id": c.id,
                 "name": c.name,
                 "cluster_mode": c.cluster_mode,
+                "active_until": active_until.get(c.id),
                 "remediation_frozen": c.remediation_frozen,
                 "connected": connected,
                 "stale": stale,
@@ -99,11 +130,16 @@ async def set_cluster_mode(
     if p.scope_type != "cluster":
         raise HTTPException(403, "클러스터 모드 변경은 클러스터 범위 admin 만 가능합니다")
     scope.resolve_scope(p, cluster_id)
+    _guard_active(p, body.mode)
     await run_in_threadpool(crud.set_cluster_mode, cluster_id, body.mode, p.username)
+    until = _active_until(None) if body.mode == "ACTIVE" else None
     await hub.broadcast_event(
-        {"kind": "mode_changed", "cluster_id": cluster_id, "mode": body.mode, "scope": "cluster"}
+        {"kind": "mode_changed", "cluster_id": cluster_id, "mode": body.mode, "scope": "cluster",
+         "by": p.username, "active_until": until}
     )
-    return {"ok": True, "cluster_id": cluster_id, "mode": body.mode}
+    if body.mode == "ACTIVE":
+        log.warning("클러스터 %s ACTIVE 전환 (by %s, 자동 복귀 %s)", cluster_id, p.username, until)
+    return {"ok": True, "cluster_id": cluster_id, "mode": body.mode, "active_until": until}
 
 
 @router.post("/{cluster_id}/namespaces/{namespace}/mode")
@@ -112,9 +148,14 @@ async def set_ns_mode(
     p: auth.Principal = Depends(auth.require_admin),
 ) -> dict:
     scope.effective_namespace(p, cluster_id, namespace)  # 스코프 밖이면 403
+    _guard_active(p, body.mode)
     await run_in_threadpool(
         crud.set_namespace_mode, cluster_id, namespace, body.mode, p.username
     )
+    until = _active_until(None) if body.mode == "ACTIVE" else None
+    if body.mode == "ACTIVE":
+        log.warning("네임스페이스 %s/%s ACTIVE 전환 (by %s, 자동 복귀 %s)",
+                    cluster_id, namespace, p.username, until)
     await hub.broadcast_event(
         {
             "kind": "mode_changed",
@@ -122,9 +163,33 @@ async def set_ns_mode(
             "namespace": namespace,
             "mode": body.mode,
             "scope": "namespace",
+            "by": p.username,
+            "active_until": until,
         }
     )
-    return {"ok": True, "cluster_id": cluster_id, "namespace": namespace, "mode": body.mode}
+    return {"ok": True, "cluster_id": cluster_id, "namespace": namespace, "mode": body.mode,
+            "active_until": until}
+
+
+@router.get("/{cluster_id}/mode-events")
+async def mode_events(
+    cluster_id: str, limit: int = 50, p: auth.Principal = Depends(auth.require_admin)
+) -> dict:
+    """모드 변경 이력(누가·언제) + 현재 ACTIVE 범위와 자동 복귀 예정 시각."""
+    if p.scope_type != "cluster":
+        raise HTTPException(403, "모드 이력은 클러스터 범위 admin 만 조회할 수 있습니다")
+    scope.resolve_scope(p, cluster_id)
+    events = await run_in_threadpool(crud.list_mode_events, cluster_id, min(max(limit, 1), 200))
+    active = await run_in_threadpool(crud.active_scopes, cluster_id)
+    s = get_settings()
+    return {
+        "events": events,
+        "active": [{"namespace": a["namespace"], "active_until": _active_until(a["since"])}
+                   for a in active],
+        "active_max_seconds": s.mode_active_max_seconds,
+        "require_personal": s.mode_active_require_personal,
+        "shared_admin": s.admin_user,
+    }
 
 
 @router.post("/{cluster_id}/freeze")

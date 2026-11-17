@@ -4,6 +4,7 @@ export type Cluster = {
   id: string;
   name: string;
   cluster_mode: "OBSERVE" | "ACTIVE";
+  active_until?: string | null; // ACTIVE 자동 복귀 예정 시각(UTC ISO)
   remediation_frozen: boolean;
   connected: boolean;
   stale: boolean;
@@ -171,6 +172,14 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   }).then(j);
 
+export type ModeEvents = {
+  events: { namespace: string; old_mode: string; new_mode: string; changed_by: string; at: string }[];
+  active: { namespace: string; active_until: string | null }[];
+  active_max_seconds: number;
+  require_personal: boolean;
+  shared_admin: string;
+};
+
 export type OpContainer = {
   name: string; requests: { cpu: string; memory: string }; limits: { cpu: string; memory: string };
   usage_p95: { cpu: string; memory: string }; cpu_ratio: number | null; mem_ratio: number | null;
@@ -251,6 +260,7 @@ export const api = {
   namespaceModes: (c: string) =>
     get(`api/clusters/${c}/namespace-modes`) as Promise<Record<string, string>>,
   setClusterMode: (c: string, mode: string) => post(`api/clusters/${c}/mode`, { mode }),
+  modeEvents: (c: string) => get(`api/clusters/${c}/mode-events`) as Promise<ModeEvents>,
   setNamespaceMode: (c: string, ns: string, mode: string) =>
     post(`api/clusters/${c}/namespaces/${encodeURIComponent(ns)}/mode`, { mode }),
   setFreeze: (c: string, frozen: boolean) => post(`api/clusters/${c}/freeze`, { frozen }),

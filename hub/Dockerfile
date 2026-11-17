@@ -23,7 +23,9 @@ COPY --from=web /web/dist ./web_dist
 
 # 이미지 태그와 같은 값을 넣어 빌드: docker build --build-arg VERSION=<tag> (생략 시 dev)
 ARG VERSION=dev
-ENV CANGGU_HUB_VERSION=$VERSION
+ARG REVISION=
+ENV CANGGU_HUB_VERSION=$VERSION CANGGU_HUB_REVISION=$REVISION
+LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$REVISION
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

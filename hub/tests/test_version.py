@@ -8,5 +8,6 @@ from app.config import get_settings
 
 def test_healthz_reports_configured_version():
     body = asyncio.run(main.healthz())
-    assert body == {"status": "ok", "version": get_settings().hub_version}
+    s = get_settings()
+    assert body == {"status": "ok", "version": s.hub_version, "revision": s.hub_revision}
     assert main.app.version == get_settings().hub_version

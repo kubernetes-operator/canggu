@@ -1,8 +1,11 @@
 .PHONY: help up down hub agent-mock web test test-hub test-agent proto lint images push deploy undeploy
 
 REGISTRY ?= registry.local.cloud:5000
-TAG ?= 0.1.1
-AGENT_TAG ?= $(TAG)
+# 태그 기본값은 deploy/k8s/kustomization.yaml 의 newTag (배포될 태그 = 이미지 태그 = 표시 버전).
+# 절차: newTag 수정 → make images push → 커밋/푸시.
+TAG ?= $(shell awk '/canggu\/hub$$/{f=1;next} f&&/newTag/{gsub(/"/,"",$$2);print $$2;exit}' deploy/k8s/kustomization.yaml)
+AGENT_TAG ?= $(shell awk '/canggu\/agent$$/{f=1;next} f&&/newTag/{gsub(/"/,"",$$2);print $$2;exit}' deploy/k8s/kustomization.yaml)
+REVISION ?= $(shell git rev-parse --short=12 HEAD)$(shell git diff --quiet HEAD || echo -dirty)
 
 help:
 	@echo "canggu 개발 타깃:"
@@ -47,8 +50,8 @@ lint:
 
 # ── 컨테이너 이미지 / k8s 배포 ────────────────────────────────────────────────
 images:
-	docker build -f hub/Dockerfile --build-arg VERSION=$(TAG) -t $(REGISTRY)/canggu/hub:$(TAG) .
-	docker build -f agent/Dockerfile --build-arg VERSION=$(AGENT_TAG) -t $(REGISTRY)/canggu/agent:$(AGENT_TAG) ./agent
+	docker build -f hub/Dockerfile --build-arg VERSION=$(TAG) --build-arg REVISION=$(REVISION) -t $(REGISTRY)/canggu/hub:$(TAG) .
+	docker build -f agent/Dockerfile --build-arg VERSION=$(AGENT_TAG) --build-arg REVISION=$(REVISION) -t $(REGISTRY)/canggu/agent:$(AGENT_TAG) ./agent
 
 push:
 	docker push $(REGISTRY)/canggu/hub:$(TAG)

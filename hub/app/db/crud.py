@@ -148,6 +148,72 @@ def set_cluster_mode(cluster_id: str, mode: Mode, by: str) -> None:
         db.commit()
 
 
+def _as_naive_utc(ts: datetime) -> datetime:
+    return ts.astimezone(timezone.utc).replace(tzinfo=None) if ts.tzinfo is not None else ts
+
+
+def _active_since(db, cluster_id: str, namespace: str) -> datetime | None:
+    """해당 범위가 마지막으로 ACTIVE 로 바뀐 시각(UTC naive). 이력이 없으면 None."""
+    ev = db.scalar(
+        select(ModeEvent)
+        .where(ModeEvent.cluster_id == cluster_id, ModeEvent.namespace == namespace,
+               ModeEvent.new_mode == "ACTIVE")
+        .order_by(ModeEvent.at.desc(), ModeEvent.id.desc())
+        .limit(1)
+    )
+    return _as_naive_utc(ev.at) if ev else None
+
+
+def active_scopes(cluster_id: str | None = None) -> list[dict]:
+    """현재 ACTIVE 인 클러스터·네임스페이스와 ACTIVE 시작 시각."""
+    out: list[dict] = []
+    with SessionLocal() as db:
+        q = select(Cluster).where(Cluster.cluster_mode == "ACTIVE")
+        if cluster_id:
+            q = q.where(Cluster.id == cluster_id)
+        for c in db.scalars(q):
+            out.append({"cluster_id": c.id, "namespace": "",
+                        "since": _active_since(db, c.id, "")})
+        q = select(NamespaceMode).where(NamespaceMode.mode == "ACTIVE")
+        if cluster_id:
+            q = q.where(NamespaceMode.cluster_id == cluster_id)
+        for r in db.scalars(q):
+            out.append({"cluster_id": r.cluster_id, "namespace": r.namespace,
+                        "since": _active_since(db, r.cluster_id, r.namespace)})
+    return out
+
+
+def expire_active_modes(max_seconds: int, now: datetime | None = None) -> list[dict]:
+    """max_seconds 를 넘긴 ACTIVE 를 OBSERVE 로 되돌리고 되돌린 범위 목록을 반환.
+
+    ACTIVE 시작 이력이 없는(사고 이전 데이터 등) ACTIVE 도 기한 초과로 보고 되돌린다.
+    """
+    if max_seconds <= 0:
+        return []
+    now = _as_naive_utc(now) if now else datetime.now(timezone.utc).replace(tzinfo=None)
+    expired = [
+        s for s in active_scopes()
+        if s["since"] is None or (now - s["since"]).total_seconds() >= max_seconds
+    ]
+    for s in expired:
+        if s["namespace"]:
+            set_namespace_mode(s["cluster_id"], s["namespace"], "OBSERVE", "system:auto-revert")
+        else:
+            set_cluster_mode(s["cluster_id"], "OBSERVE", "system:auto-revert")
+    return expired
+
+
+def list_mode_events(cluster_id: str, limit: int = 50) -> list[dict]:
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(ModeEvent).where(ModeEvent.cluster_id == cluster_id)
+            .order_by(ModeEvent.at.desc(), ModeEvent.id.desc()).limit(limit)
+        )
+        return [{"namespace": r.namespace, "old_mode": r.old_mode, "new_mode": r.new_mode,
+                 "changed_by": r.changed_by,
+                 "at": _as_naive_utc(r.at).isoformat() + "Z"} for r in rows]
+
+
 def set_namespace_mode(cluster_id: str, namespace: str, mode: Mode, by: str) -> None:
     with SessionLocal() as db:
         row = db.scalar(

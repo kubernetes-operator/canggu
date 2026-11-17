@@ -3,6 +3,7 @@ import {
   api, BASE, clearToken, Cluster, Command, getToken, Issue, K8sEvent, Me, OpContainer, Operating,
   OpWorkload, Pod, RouteEdge, Service,
   setToken, StorageLink, Workload,
+  type ModeEvents,
 } from "./api";
 
 type LiveEvent = Record<string, unknown> & { kind: string; ts?: string };
@@ -136,7 +137,13 @@ export default function App() {
 
   async function toggleMode() {
     if (!cluster) return;
-    await api.setClusterMode(cluster.id, cluster.cluster_mode === "ACTIVE" ? "OBSERVE" : "ACTIVE");
+    const next = cluster.cluster_mode === "ACTIVE" ? "OBSERVE" : "ACTIVE";
+    if (next === "ACTIVE" && !confirm(ACTIVE_WARNING(`클러스터 ${cluster.name} 전체`))) return;
+    try {
+      await api.setClusterMode(cluster.id, next);
+    } catch (e) {
+      alert("모드 변경 실패: " + e);
+    }
     refreshClusters();
   }
   async function toggleFreeze() {
@@ -147,7 +154,13 @@ export default function App() {
   async function toggleNsMode() {
     if (!selected || ns === "all") return;
     const cur = nsModes[ns] ?? cluster?.cluster_mode ?? "OBSERVE";
-    await api.setNamespaceMode(selected, ns, cur === "ACTIVE" ? "OBSERVE" : "ACTIVE");
+    const next = cur === "ACTIVE" ? "OBSERVE" : "ACTIVE";
+    if (next === "ACTIVE" && !confirm(ACTIVE_WARNING(`네임스페이스 ${ns}`))) return;
+    try {
+      await api.setNamespaceMode(selected, ns, next);
+    } catch (e) {
+      alert("모드 변경 실패: " + e);
+    }
     refreshData();
   }
   async function apply(fp: string, dry: boolean) {
@@ -235,6 +248,9 @@ export default function App() {
         <section className="controls">
           <div className={`mode ${cluster.cluster_mode}`}>
             모드: <b>{cluster.cluster_mode === "ACTIVE" ? "자동조정(ACTIVE)" : "관찰전용(OBSERVE)"}</b>
+            {cluster.cluster_mode === "ACTIVE" && cluster.active_until && (
+              <span className="stat"> · {fmtLocal(cluster.active_until)} 자동 복귀</span>
+            )}
             {isAdmin && (
               <button onClick={toggleMode}>
                 {cluster.cluster_mode === "ACTIVE" ? "관찰전용으로" : "자동조정으로"}
@@ -520,6 +536,7 @@ export default function App() {
         <VeleroPanel cluster={selected} namespaces={namespaces} isAdmin={!!isAdmin} />
         <RulesPanel isAdmin={!!isAdmin} />
         <UsersPanel isAdmin={!!isAdmin} clusterId={selected} />
+        <ModeHistoryPanel isAdmin={!!isAdmin} clusterId={selected} />
       </div>
 
       {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
@@ -751,6 +768,62 @@ function RulesPanel({ isAdmin }: { isAdmin: boolean }) {
         </tbody>
       </table>
       <div className="stat">※ 활성 규칙만 이슈를 생성하고, auto-apply + ACTIVE 모드일 때만 실제 변경됩니다.</div>
+    </Panel>
+  );
+}
+
+const ACTIVE_WARNING = (target: string) =>
+  `${target}를 자동조정(ACTIVE)으로 바꿉니다.\n\n` +
+  "canggu 가 라이브 리소스를 직접 patch 합니다. GitOps(ArgoCD 등)가 관리하는 리소스는 제외되지만, " +
+  "그 밖의 리소스는 원천(git/Helm)과 어긋나는 드리프트가 생깁니다.\n" +
+  "설정된 시간이 지나면 자동으로 관찰전용(OBSERVE)으로 돌아갑니다.\n\n계속할까요?";
+
+function fmtLocal(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+function ModeHistoryPanel({ isAdmin, clusterId }: { isAdmin: boolean; clusterId: string }) {
+  const [data, setData] = useState<ModeEvents | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!isAdmin || !clusterId) return;
+    api.modeEvents(clusterId).then((d) => { setData(d); setErr(""); }).catch((e) => setErr(String(e)));
+  }, [isAdmin, clusterId]);
+  if (!isAdmin) return null;
+  return (
+    <Panel title="모드 변경 이력" wide>
+      {err && <div className="err">{err}</div>}
+      {data && (
+        <>
+          <p className="stat">
+            ACTIVE 자동 복귀: {data.active_max_seconds > 0 ? `${Math.round(data.active_max_seconds / 60)}분 후` : "꺼짐"}
+            {" · "}
+            {data.require_personal
+              ? `공용 계정(${data.shared_admin})으로는 ACTIVE 전환 불가 — 개인 admin 계정 사용`
+              : "공용 계정 ACTIVE 전환 허용"}
+          </p>
+          {data.active.length > 0 && (
+            <p className="err">
+              현재 ACTIVE: {data.active.map((a) =>
+                `${a.namespace || "클러스터 전체"}${a.active_until ? ` (${fmtLocal(a.active_until)} 복귀)` : ""}`).join(", ")}
+            </p>
+          )}
+          <table>
+            <thead><tr><th>시각</th><th>범위</th><th>변경</th><th>변경자</th></tr></thead>
+            <tbody>
+              {data.events.map((e, i) => (
+                <tr key={i}>
+                  <td className="mono">{fmtLocal(e.at)}</td>
+                  <td>{e.namespace || "클러스터"}</td>
+                  <td>{e.old_mode || "-"} → <b>{e.new_mode}</b></td>
+                  <td className="mono">{e.changed_by}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </Panel>
   );
 }

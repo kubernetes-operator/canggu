@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -57,6 +58,38 @@ def _seed_admin() -> None:
         )
 
 
+async def expire_active_once() -> list[dict]:
+    """ACTIVE 기한 초과 범위를 OBSERVE 로 되돌리고 live 이벤트로 알린다."""
+    from starlette.concurrency import run_in_threadpool
+
+    from app.agentlink.manager import hub
+
+    expired = await run_in_threadpool(
+        crud.expire_active_modes, get_settings().mode_active_max_seconds
+    )
+    for e in expired:
+        ns = e["namespace"]
+        logging.getLogger("canggu").warning(
+            "ACTIVE 기한 초과 → OBSERVE 자동 복귀: %s%s", e["cluster_id"], f"/{ns}" if ns else ""
+        )
+        await hub.broadcast_event({
+            "kind": "mode_changed", "cluster_id": e["cluster_id"], "mode": "OBSERVE",
+            "scope": "namespace" if ns else "cluster", **({"namespace": ns} if ns else {}),
+            "by": "system:auto-revert", "reason": "active_expired",
+        })
+    return expired
+
+
+async def _active_expiry_loop() -> None:
+    log = logging.getLogger("canggu")
+    while True:
+        try:
+            await expire_active_once()
+        except Exception:  # noqa: BLE001 — 루프는 계속
+            log.exception("ACTIVE 자동 복귀 점검 실패")
+        await asyncio.sleep(get_settings().mode_expiry_check_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.remediation.rules import RULE_CATALOG
@@ -66,7 +99,11 @@ async def lifespan(app: FastAPI):
     crud.seed_rule_configs(RULE_CATALOG)
     logging.getLogger("canggu").info("hub 시작 — DB 초기화 완료 (auth=%s)",
                                      get_settings().auth_enabled)
-    yield
+    expiry_task = asyncio.create_task(_active_expiry_loop())
+    try:
+        yield
+    finally:
+        expiry_task.cancel()
 
 
 app = FastAPI(title="canggu hub", version=get_settings().hub_version, lifespan=lifespan)
@@ -97,7 +134,8 @@ app.include_router(live.router)
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"status": "ok", "version": get_settings().hub_version}
+    s = get_settings()
+    return {"status": "ok", "version": s.hub_version, "revision": s.hub_revision}
 
 
 # 빌드된 웹 SPA 정적 서빙 (API/WS 라우트 뒤에 마운트하여 우선순위 보장).
