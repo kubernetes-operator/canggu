@@ -172,6 +172,31 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   }).then(j);
 
+export type Summary = {
+  health_score: number; scope_namespace: string | null; issues_total: number;
+  issues_by_severity: Record<string, number>; issues_by_rule: Record<string, number>;
+  totals: Record<string, number>;
+  restarting_pods: number; unhealthy_services: number; unbound_pvcs: number;
+  workloads_single_node: number; warning_events: number; warning_events_noise?: number;
+};
+
+export type Dashboard = {
+  clusters: Cluster[] | null;
+  namespaces: string[] | null;
+  namespace_modes: Record<string, string> | null;
+  pods: Pod[] | null;
+  services: Service[] | null;
+  workloads: Workload[] | null;
+  storage: StorageLink[] | null;
+  routes: RouteEdge[] | null;
+  events: K8sEvent[] | null;
+  operating: Operating | null;
+  issues: Issue[] | null;
+  commands: Command[] | null;
+  summary: Summary | null;
+  errors: Record<string, string>;
+};
+
 export type ModeEvents = {
   events: { namespace: string; old_mode: string; new_mode: string; changed_by: string; at: string }[];
   active: { namespace: string; active_until: string | null }[];
@@ -250,13 +275,10 @@ export const api = {
   issues: (c: string, ns: string) =>
     get(`api/clusters/${c}/issues?namespace=${encodeURIComponent(ns)}`) as Promise<Issue[]>,
   commands: (c: string) => get(`api/commands?cluster_id=${c}`) as Promise<Command[]>,
-  summary: (c: string) => get(`api/clusters/${c}/summary`) as Promise<{
-    health_score: number; scope_namespace: string | null; issues_total: number;
-    issues_by_severity: Record<string, number>; issues_by_rule: Record<string, number>;
-    totals: Record<string, number>;
-    restarting_pods: number; unhealthy_services: number; unbound_pvcs: number;
-    workloads_single_node: number; warning_events: number; warning_events_noise?: number;
-  }>,
+  summary: (c: string) => get(`api/clusters/${c}/summary`) as Promise<Summary>,
+  // 새로고침 1회 = 요청 1회 (Cloudflare 경유 왕복 비용 절감). 섹션별 실패는 errors 에 담기고 값은 null.
+  dashboard: (c: string, ns: string) =>
+    get(`api/clusters/${c}/dashboard?namespace=${encodeURIComponent(ns)}`) as Promise<Dashboard>,
   namespaceModes: (c: string) =>
     get(`api/clusters/${c}/namespace-modes`) as Promise<Record<string, string>>,
   setClusterMode: (c: string, mode: string) => post(`api/clusters/${c}/mode`, { mode }),

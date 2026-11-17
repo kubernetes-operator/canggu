@@ -71,47 +71,60 @@ export default function App() {
   const refreshData = useCallback(async () => {
     if (!selected || !me) return;
     try {
-      const [nsList, nsm, p, svc, wl, st, rt, i, cmds] = await Promise.all([
-        api.namespaces(selected).catch(() => []),
-        api.namespaceModes(selected).catch(() => ({}) as Record<string, string>),
-        api.pods(selected, ns).catch(() => []),
-        api.services(selected, ns).catch(() => []),
-        api.workloads(selected, ns).catch(() => []),
-        api.storage(selected, ns).catch(() => []),
-        api.routes(selected, ns).catch(() => []),
-        api.issues(selected, ns).catch(() => []),
-        api.commands(selected).catch(() => []),
-      ]);
-      api.events(selected, ns).then(setK8sEvents).catch(() => setK8sEvents([]));
-      api.operating(selected, ns).then(setOperating).catch(() => setOperating(null));
-      setNamespaces(nsList);
-      setNsModes(nsm);
-      setPods(p);
-      setServices(svc);
-      setWorkloads(wl);
-      setStorage(st);
-      setRoutes(rt);
-      setIssues(i);
-      setCommands(cmds);
-      api.summary(selected).then(setSummary).catch(() => setSummary(null));
+      const d = await api.dashboard(selected, ns);
+      if (d.clusters) setClusters(d.clusters);
+      setNamespaces(d.namespaces ?? []);
+      setNsModes(d.namespace_modes ?? {});
+      setPods(d.pods ?? []);
+      setServices(d.services ?? []);
+      setWorkloads(d.workloads ?? []);
+      setStorage(d.storage ?? []);
+      setRoutes(d.routes ?? []);
+      setIssues(d.issues ?? []);
+      setCommands(d.commands ?? []);
+      setK8sEvents(d.events ?? []);
+      setOperating(d.operating);
+      setSummary(d.summary);
+      setErr("");
     } catch (e) {
       setErr(String(e));
     }
   }, [selected, ns, me]);
 
+  // 클러스터 목록은 선택 전까지만 따로 조회. 선택 후에는 대시보드 묶음 응답에 포함된다.
   useEffect(() => {
+    if (selected) return;
     refreshClusters();
     if (refreshMs <= 0) return;
     const t = setInterval(refreshClusters, refreshMs);
     return () => clearInterval(t);
-  }, [refreshClusters, refreshMs]);
+  }, [refreshClusters, refreshMs, selected]);
 
+  // 주기 새로고침: 탭이 보이지 않으면 건너뛰고, 다시 보이면 즉시 1회 갱신.
   useEffect(() => {
     refreshData();
-    if (refreshMs <= 0) return;
-    const t = setInterval(refreshData, refreshMs);
-    return () => clearInterval(t);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshData(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const t = refreshMs > 0
+      ? setInterval(() => { if (document.visibilityState === "visible") refreshData(); }, refreshMs)
+      : undefined;
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (t) clearInterval(t);
+    };
   }, [refreshData, refreshMs]);
+
+  // 라이브 이벤트로 인한 갱신은 짧은 시간에 몰려 와도 1회로 합친다.
+  const refreshDataRef = useRef(refreshData);
+  refreshDataRef.current = refreshData;
+  const pendingRefresh = useRef<number | undefined>(undefined);
+  const scheduleRefresh = useCallback(() => {
+    if (pendingRefresh.current !== undefined) return;
+    pendingRefresh.current = window.setTimeout(() => {
+      pendingRefresh.current = undefined;
+      refreshDataRef.current();
+    }, 1000);
+  }, []);
 
   // 라이브 피드 WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -126,8 +139,7 @@ export default function App() {
       const ev = JSON.parse(m.data) as LiveEvent;
       setEvents((prev) => [ev, ...prev].slice(0, 60));
       if (["command_result", "mode_changed", "freeze_changed"].includes(ev.kind)) {
-        refreshData();
-        refreshClusters();
+        scheduleRefresh();
       }
     };
     ws.onclose = () => (wsRef.current = null);
@@ -214,7 +226,7 @@ export default function App() {
             {!cluster.connected && " · agent 미접속"}
           </span>
         )}
-        <button title="지금 새로고침" onClick={() => { refreshClusters(); refreshData(); }}>
+        <button title="지금 새로고침" onClick={() => refreshData()}>
           🔄 새로고침
         </button>
         <label className="stat">

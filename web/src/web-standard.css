@@ -142,6 +142,54 @@ html.ws-app body, .ws-app {
 .ws-app .ws-grid > * { min-width: 0; }
 .ws-app .ws-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ws-space-2); }
 @media (max-width: 760px) { .ws-app .ws-grid { grid-template-columns: 1fr; } }
+/* 인증 UI는 색상 연결이 아닌 동일한 구조/치수/동작을 공유한다. */
+.ws-app .ws-auth-screen:not([hidden]) { display:grid !important; place-items:center; min-height:100svh !important; padding:32px 20px !important; width:100% !important; max-width:none !important; margin:0 !important; background:radial-gradient(ellipse at 50% 0%,var(--ws-info-bg),transparent 65%),var(--ws-bg) !important; }
+.ws-app .ws-auth-card { position:relative; width:420px !important; max-width:100% !important; margin:0 !important; padding:32px !important; border:1px solid var(--ws-border) !important; border-radius:16px !important; background:var(--ws-bg) !important; color:var(--ws-text) !important; box-shadow:0 18px 64px rgb(0 0 0 / .08) !important; font-family:var(--ws-font) !important; }
+.ws-auth-page > .topbar { display:none !important; }
+.ws-app .ws-auth-heading { margin:0 0 28px !important; text-align:left !important; }
+.ws-app .ws-auth-mark { display:grid;place-items:center;width:44px;height:44px;margin-bottom:20px;border-radius:12px;background:var(--ws-accent);color:var(--ws-on-accent); }
+.ws-app .ws-auth-mark svg { width:24px;height:24px; }
+.ws-app .ws-auth-heading h2 { font-size:24px !important;line-height:1.4 !important;letter-spacing:-.03em;margin:0 0 6px !important;color:var(--ws-text) !important; }
+.ws-app .ws-auth-heading p { color:var(--ws-muted);font-size:14px;line-height:1.6;margin:0; }
+.ws-app .ws-auth-card form, .ws-app form.ws-auth-card { gap:16px; }
+.ws-app :is(.ws-auth-card,.ws-password-card) label { display:block !important;font-size:13px !important;font-weight:600;color:var(--ws-text) !important;text-align:left;line-height:1.5;margin-bottom:6px; }
+.ws-app :is(.ws-auth-card,.ws-password-card) input:not([type=hidden]):not([type=checkbox]) { display:block !important;width:100% !important;min-width:0;min-height:44px !important;height:44px !important;padding:10px 12px !important;margin:6px 0 0 !important;box-sizing:border-box !important;font:400 14px var(--ws-font) !important;border:1px solid var(--ws-border) !important;border-radius:8px !important;background:var(--ws-bg) !important;color:var(--ws-text) !important; }
+.ws-app :is(.ws-auth-card,.ws-password-card) input:focus-visible { outline:3px solid color-mix(in srgb,var(--ws-accent) 30%,transparent) !important;outline-offset:1px !important;border-color:var(--ws-accent) !important; }
+.ws-app .ws-auth-card :is(.field,.ws-auth-field) { margin:0 0 16px !important; }
+.ws-app .ws-auth-card :is(button[type=submit],button.ws-auth-submit) { width:100% !important;min-height:44px !important;margin:8px 0 0 !important;border:1px solid var(--ws-accent) !important;border-radius:8px !important;background:var(--ws-accent) !important;color:var(--ws-on-accent) !important;font:600 14px var(--ws-font) !important;cursor:pointer; }
+.ws-app .ws-auth-card .modal-actions { display:block !important;margin:0 !important; }
+.ws-app .ws-auth-card :is(.error,.err,#login-error,.ws-auth-feedback) { color:var(--ws-danger) !important;font-size:13px;line-height:1.5; }
+.ws-app .ws-auth-card :is(.error,.err,#login-error,.ws-auth-feedback):empty { display:none !important; }
+.ws-app [data-ws-auth-hide], .ws-app [data-ws-original-action] { display:none !important; }
+.ws-app .ws-auth-card > .ws-auth-heading ~ label { margin-top:16px; }
+.ws-app dialog.ws-auth-card { margin:auto !important;max-height:calc(100svh - 32px);overflow:auto; }
+.ws-app dialog.ws-auth-card .account-head { position:absolute;right:12px;top:12px;margin:0; }
+.ws-app dialog.ws-auth-card .account-head h2 { display:none; }
+.ws-app dialog.ws-auth-card .account-head button { font-size:12px;padding:6px 8px; }
+.ws-app .ws-password-card { width:440px !important;max-width:calc(100vw - 32px) !important;padding:28px !important;border:1px solid var(--ws-border) !important;border-radius:16px !important;background:var(--ws-bg) !important;color:var(--ws-text) !important;box-shadow:0 24px 80px rgb(0 0 0 / .2);font:14px var(--ws-font);max-height:calc(100svh - 32px);overflow:auto; }
+.ws-app dialog.ws-password-card { margin:auto; }
+.ws-app .ws-password-card::backdrop { background:var(--ws-overlay);backdrop-filter:blur(3px); }
+.ws-app .ws-password-card .ws-auth-heading { margin-bottom:24px !important; }
+.ws-app .ws-password-card .ws-auth-heading h2 { font-size:20px !important; }
+.ws-app .ws-password-card form { display:flex !important;flex-direction:column !important;gap:16px !important;margin:0 !important; }
+.ws-app .ws-password-card .field { margin:0 !important; }
+.ws-app .ws-password-actions { display:flex !important;justify-content:flex-end;gap:8px !important;margin-top:8px !important; }
+.ws-app .ws-password-actions button { width:auto !important;min-height:40px;padding:8px 16px !important;border:1px solid var(--ws-border);border-radius:8px;font:600 14px var(--ws-font);background:var(--ws-bg);color:var(--ws-text);cursor:pointer; }
+.ws-app .ws-password-actions button[type=submit],.ws-app .ws-password-actions button.primary { color:var(--ws-on-accent) !important;background:var(--ws-accent) !important;border-color:var(--ws-accent) !important; }
+.ws-app .ws-auth-feedback { font-size:13px;color:var(--ws-danger);margin:0; }
+.ws-app .ws-security-panel { padding:24px;border:1px solid var(--ws-border);border-radius:12px;background:var(--ws-panel); }
+.ws-app .ws-security-open { padding:10px 16px;border:1px solid var(--ws-border);border-radius:8px;background:var(--ws-bg);color:var(--ws-text);font:600 14px var(--ws-font);cursor:pointer; }
+.ws-app .ws-account-menu { position:relative;flex:none;font:14px var(--ws-font); }
+.ws-app .ws-account-menu > summary { display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;padding:8px 12px;min-height:38px;border:1px solid var(--ws-border);border-radius:8px;background:var(--ws-bg);color:var(--ws-text);font-weight:600;white-space:nowrap; }
+.ws-app .ws-account-menu > summary::-webkit-details-marker { display:none; }
+.ws-app .ws-account-menu > summary::after { content:'⌄';color:var(--ws-muted);margin-left:8px; }
+.ws-app .ws-account-dropdown { position:absolute;right:0;top:calc(100% + 8px);width:210px;max-width:calc(100vw - 32px);z-index:1200;padding:6px;border:1px solid var(--ws-border);border-radius:12px;box-shadow:0 12px 36px rgb(0 0 0 / .15);background:var(--ws-bg); }
+.ws-app .ws-account-dropdown button { display:block;width:100%;text-align:left;border:0;border-radius:6px;padding:11px 12px;background:transparent;color:var(--ws-text);font:14px var(--ws-font);cursor:pointer; }
+.ws-app .ws-account-dropdown button:hover { background:var(--ws-hover); }
+.ws-app .ws-account-dropdown .ws-signout { border-top:1px solid var(--ws-border);border-radius:0;color:var(--ws-danger);margin-top:4px; }
+@media(max-width:480px) { .ws-app .ws-auth-card { padding:28px 24px !important; } .ws-app .ws-password-card { padding:24px !important; } }
+
+.ws-app .ws-account-trigger { min-height:38px !important;padding:8px 12px !important;border:1px solid var(--ws-border) !important;border-radius:8px !important;background:var(--ws-bg) !important;color:var(--ws-text) !important;font-weight:600; }
 
 :root.ws-project-canggu {
   --bg: var(--ws-bg);

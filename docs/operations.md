@@ -71,6 +71,14 @@
 - 조회(로그인): `/api/clusters`, `/api/clusters/{c}/{namespaces,pods,workloads,services,storage,routes,issues,velero,...}`
 - 변경(admin): `/mode`, `/freeze`, `/namespaces/{ns}/mode`, `/issues/{fp}/apply`, `/workloads/.../patch`, `/kubeconfig`, `/velero/*`, `/api/rules/{id}`
 - 라이브 피드: `WS /live/ws?token=<jwt>` (스코프별 필터)
+- **대시보드 묶음**: `GET /api/clusters/{c}/dashboard?namespace=` — 웹 새로고침 1회에 필요한 13개 조회(clusters·pods·operating·summary 등)를 한 응답으로. 섹션 실패는 `errors` 에 기록되고 값은 null.
+
+## 성능 메모
+
+- 외부 주소(Cloudflare 경유)는 요청당 왕복 0.5~0.9s, 내부 LB 직접은 0.01~0.1s (2026-11-17 측정). 체감 지연의 대부분은 경로 비용이라 요청 수를 줄이는 것이 핵심.
+- 웹: 새로고침은 묶음 API 1회, 탭이 숨겨져 있으면 주기 갱신 중단, 라이브 이벤트 갱신은 1초 단위로 합침.
+- 정적 자산: `assets/*`(해시 파일명) `Cache-Control: public, max-age=31536000, immutable`, `index.html` 은 `no-cache`.
+- 진단: 모든 HTTP 응답에 `Server-Timing`(`app` = hub 처리 시간, 묶음 API 는 느린 섹션 `s-<이름>` 추가). 브라우저 개발자 도구 Network → Timing 에서 서버 시간과 네트워크 시간을 구분.
 
 모든 조회·변경은 웹 RBAC 스코프로 서버 측 강제(네임스페이스 사용자는 자기 NS 만).
 

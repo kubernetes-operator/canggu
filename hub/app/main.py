@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,6 +19,7 @@ from app.api import (
     auth as auth_api,
     clusters,
     commands,
+    dashboard,
     issues,
     kubeconfig,
     live,
@@ -109,6 +111,54 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="canggu hub", version=get_settings().hub_version, lifespan=lifespan)
 
 _settings = get_settings()
+
+
+class ServerTimingMiddleware:
+    """HTTP 응답에 Server-Timing 헤더(app 처리 시간 + 핸들러가 남긴 세부 구간)를 붙인다.
+
+    브라우저 개발자 도구에서 서버 시간과 네트워크(Cloudflare 등) 시간을 구분하기 위함.
+    순수 ASGI 라 WebSocket·스트리밍에 영향 없음.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        t0 = time.perf_counter()
+        scope.setdefault("state", {})
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                parts = [f"app;dur={(time.perf_counter() - t0) * 1000:.1f}"]
+                for name, dur in scope["state"].get("server_timing", []):
+                    parts.append(f"{name};dur={dur * 1000:.1f}")
+                message.setdefault("headers", []).append(
+                    (b"server-timing", ", ".join(parts).encode())
+                )
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+class CachedStaticFiles(StaticFiles):
+    """해시가 붙은 빌드 산출물(assets/)은 1년 immutable 캐시, index.html 은 매번 재검증.
+
+    배포 시 파일명 해시가 바뀌므로 오래된 자산이 남지 않고, index.html 만 새로 받으면 된다.
+    """
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if resp.status_code in (200, 304):
+            if path.startswith("assets/"):
+                resp.headers["cache-control"] = "public, max-age=31536000, immutable"
+            else:
+                resp.headers["cache-control"] = "no-cache"
+        return resp
+
+
+app.add_middleware(ServerTimingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
@@ -120,6 +170,7 @@ app.add_middleware(
 app.include_router(auth_api.router)
 # 읽기 라우터는 로그인 사용자 필요, 변경 엔드포인트는 각 핸들러에서 require_admin.
 app.include_router(clusters.router)
+app.include_router(dashboard.router)
 app.include_router(resources.router, dependencies=[Depends(auth.require_user)])
 app.include_router(issues.router)
 app.include_router(manual.router)
@@ -141,5 +192,5 @@ async def healthz() -> dict:
 # 빌드된 웹 SPA 정적 서빙 (API/WS 라우트 뒤에 마운트하여 우선순위 보장).
 # gateway 가 /operating/ prefix 를 strip 하므로 hub 는 루트에서 서빙한다.
 if _settings.web_dist and os.path.isdir(_settings.web_dist):
-    app.mount("/", StaticFiles(directory=_settings.web_dist, html=True), name="web")
+    app.mount("/", CachedStaticFiles(directory=_settings.web_dist, html=True), name="web")
     logging.getLogger("canggu").info("웹 SPA 정적 서빙: %s", _settings.web_dist)
